@@ -427,24 +427,12 @@ export default function Home() {
       {/* RPG Guild Hall Header */}
       <header className="site-header">
         <div className="header-inner">
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div className="site-brand" onClick={() => setActiveTab("arcade")} role="button" tabIndex={0}>
-              <GuildLogo size={36} />
-              <div className="brand-text-group">
-                <div className="brand-title">Bounty<span>Mesh</span></div>
-                <div className="brand-subtitle">Autonomous Agent Guild</div>
-              </div>
+          <div className="site-brand" onClick={() => setActiveTab("arcade")} role="button" tabIndex={0}>
+            <GuildLogo size={36} />
+            <div className="brand-text-group">
+              <div className="brand-title">Bounty<span>Mesh</span></div>
+              <div className="brand-subtitle">Autonomous Agent Guild</div>
             </div>
-
-            <span className={`mode-badge ${hasLoadedSnapshot && snapshot.config.mode === "live" ? "live" : "demo"}`}>
-              <span className="status-dot-ping" />
-              {needsToken ? "Authorization required" : !hasLoadedSnapshot ? (connectionError ? "API unavailable" : "Connecting") : snapshot.config.mode === "live" ? `Live Network${snapshot.config.payments === "stripe" ? " · Stripe test" : ""}` : "Demo Mode"}
-            </span>
-            {hasLoadedSnapshot && snapshot.config.mode === "live" && !needsToken && (
-              <span className={`mode-badge ${realtimeConnected ? "live" : "demo"}`}>
-                <span className="status-dot-ping" />{realtimeConnected ? "Realtime connected" : "Polling API"}
-              </span>
-            )}
           </div>
 
           {/* Navigation Tabs */}
@@ -495,10 +483,18 @@ export default function Home() {
 
           {/* Escrow Balance & Refresh */}
           <div className="header-actions">
-            <div className="wallet-chip">
-              <Coins size={14} style={{ color: "#fbbf24" }} />
-              <span className="wallet-label">{needsToken ? "AUTH REQUIRED:" : !hasLoadedSnapshot ? "CONNECTING:" : liveStripe ? "TEST PAYOUTS:" : snapshot.config.mode === "live" ? "TOTAL PAID:" : "ESCROW BALANCE:"}</span>
-              <span className="wallet-value">{!hasLoadedSnapshot || needsToken ? "—" : liveStripe ? `$${(stripeTestPaid / 100).toFixed(2)}` : snapshot.config.mode === "live" ? `$${(totalPaid / 100).toFixed(2)}` : balance}</span>
+            <div className="wallet-chip" title="Current Guild Treasury / Escrow balance">
+              <Coins size={14} style={{ color: "#fbbf24", flexShrink: 0 }} />
+              <span className="wallet-label">{needsToken ? "AUTH REQUIRED:" : !hasLoadedSnapshot ? "CONNECTING:" : "TREASURY:"}</span>
+              <span className="wallet-value">
+                {!hasLoadedSnapshot || needsToken
+                  ? "—"
+                  : liveStripe && stripeTestPaid > 0
+                  ? `$${(stripeTestPaid / 100).toFixed(2)}`
+                  : totalPaid > 0
+                  ? `$${(totalPaid / 100).toFixed(2)}`
+                  : balance}
+              </span>
             </div>
 
             <button

@@ -167,6 +167,7 @@ a {
   cursor: pointer;
   user-select: none;
   transition: transform 0.12s ease;
+  flex-shrink: 0;
 }
 
 .site-brand:hover {
@@ -295,33 +296,38 @@ a {
 
 /* Wallet Gold Indicator */
 .wallet-chip {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 0 14px;
   height: 36px;
   background: var(--bg-input);
   border: 2px solid var(--border-outer);
-  box-shadow: inset 0 0 0 1px var(--border-inner);
+  box-shadow: inset 0 0 0 1px var(--border-inner), 0 2px 0 var(--border-outer);
   border-radius: var(--radius-xs);
   user-select: none;
   box-sizing: border-box;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .wallet-label {
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-muted);
-  letter-spacing: 0.4px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  line-height: 1;
 }
 
 .wallet-value {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--accent-gold);
   line-height: 1;
+  letter-spacing: 0.3px;
 }
 
 .action-icon-btn {
@@ -329,10 +335,11 @@ a {
   height: 36px;
   background: var(--bg-surface);
   border: 2px solid var(--border-outer);
-  box-shadow: inset 0 0 0 1px var(--border-inner), 0 3px 0 var(--border-outer);
+  box-shadow: inset 0 0 0 1px var(--border-inner), 0 2px 0 var(--border-outer);
   border-radius: var(--radius-xs);
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-main);
   cursor: pointer;
   transition: all 0.1s ease;
@@ -342,11 +349,12 @@ a {
 
 .action-icon-btn:hover {
   background: var(--bg-surface-elevated);
+  color: var(--accent-gold);
 }
 
 .action-icon-btn:active {
   transform: translateY(2px);
-  box-shadow: inset 0 0 0 1px var(--border-inner), 0 1px 0 var(--border-outer);
+  box-shadow: inset 0 0 0 1px var(--border-inner);
 }
 
 .spin-icon {
