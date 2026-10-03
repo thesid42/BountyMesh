@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Copy, Check, CheckCircle2 } from "lucide-react";
+import { X, Copy, Check, CheckCircle2, CircleAlert } from "lucide-react";
 import type { Bounty } from "@/lib/contracts";
 
 interface ArcadeDeliverableModalProps {
@@ -13,6 +13,10 @@ export function ArcadeDeliverableModal({ bounty, onClose }: ArcadeDeliverableMod
   const [copied, setCopied] = useState(false);
 
   if (!bounty) return null;
+
+  const failed = bounty.status === "failed";
+  const reviewPassed = ["verified", "settling", "paid"].includes(bounty.status);
+  const statusColor = failed ? "#fbbf24" : reviewPassed ? "#10b981" : "#64748b";
 
   const handleCopy = (text: string) => {
     void navigator.clipboard.writeText(text);
@@ -26,8 +30,8 @@ export function ArcadeDeliverableModal({ bounty, onClose }: ArcadeDeliverableMod
         {/* Header */}
         <div className="rpg-dialog-header">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span className="rpg-badge" style={{ background: "var(--accent-green)", color: "var(--border-outer)" }}>
-              {bounty.status === "paid" ? "CLEARED" : bounty.status.toUpperCase()}
+            <span className="rpg-badge" style={{ background: statusColor, color: "#000" }}>
+              {bounty.status.toUpperCase()}
             </span>
             <div>
               <h2 className="rpg-name">{bounty.title}</h2>
@@ -78,11 +82,12 @@ export function ArcadeDeliverableModal({ bounty, onClose }: ArcadeDeliverableMod
         {bounty.review && (
           <div style={{ marginTop: 16 }}>
             <span className="rpg-section-title" style={{ color: "var(--accent-green)" }}>
-              Rubric Audit Verdict
+              {failed ? "Run Failure / Release Note" : "Rubric Audit Verdict"}
             </span>
-            <div style={{ background: "rgba(132, 169, 110, 0.12)", border: "2px solid var(--border-outer)", borderRadius: 4, padding: 12, fontSize: 13, color: "var(--text-main)", lineHeight: 1.55 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, fontWeight: 700, color: "var(--accent-green-bright)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
-                <CheckCircle2 size={14} /> Verification Passed · 100% Rubric Satisfaction
+            <div style={{ background: failed ? "rgba(245, 158, 11, 0.08)" : "rgba(132, 169, 110, 0.12)", border: failed ? "1px solid rgba(245, 158, 11, 0.28)" : "2px solid var(--border-outer)", borderRadius: 4, padding: 12, fontSize: 13, color: failed ? "#fde68a" : "var(--text-main)", lineHeight: 1.55 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, fontWeight: 700, color: failed ? "#fbbf24" : "var(--accent-green-bright)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                {failed ? <CircleAlert size={14} /> : reviewPassed ? <CheckCircle2 size={14} /> : null}
+                {failed ? "RUN FAILED · NO SUCCESS RECORDED" : reviewPassed ? "RUBRIC CHECK: PASSED" : "REVIEW NOTE"}
               </div>
               {bounty.review}
             </div>

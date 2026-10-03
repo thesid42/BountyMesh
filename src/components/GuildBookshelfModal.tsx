@@ -15,16 +15,16 @@ const TOMES = [
     volume: "Volume I",
     color: "#6d94a6",
     content:
-      "When a quest directive is posted to the guild, the executive orchestrator converts the task into a 768-dimensional normalized embedding vector. The PostgreSQL HNSW index executes cosine similarity search across all registered specialist agents, scoring capability fit with millisecond latency to award the contract to the highest-ranking worker.",
+      "Gemini creates 768-dimensional task and skill embeddings. Supabase pgvector compares them by cosine similarity to select an eligible specialist. The dashboard shows the selected worker and recorded similarity.",
   },
   {
     id: "escrow-state-machine",
-    title: "The Mechanics of Cryptographic Micro-Escrow",
+    title: "The Mechanics of Payment Holds & Settlement",
     author: "Guild Exchequer",
     volume: "Volume II",
     color: "#d4b86a",
     content:
-      "No worker shall labor without secured pledge. The bounty amount is held in an atomic escrow vault upon task announcement. Upon delivery, the orchestrator audits the artifact against strict rubric criteria. If approved, settlement releases instantaneously to the specialist wallet. If rejected or timed out, funds return automatically to the client.",
+      "Online demos use Stripe test mode: authorize the reward, review the delivered work, capture an approved payment, then transfer it to the configured connected account. Only a confirmed transfer records a paid task. Failed work releases an authorization when possible; interrupted payment processing may require an idempotent retry.",
   },
   {
     id: "specialist-agents",
@@ -33,16 +33,16 @@ const TOMES = [
     volume: "Volume III",
     color: "#7fa867",
     content:
-      "Unlike monolithic chatbots, BountyMesh delegates focused micro-tasks to specialized autonomous agents. Each agent maintains verified capability vectors in market research, data synthesis, competitive matrices, or code audits, producing high-fidelity structured deliverables.",
+      "BountyMesh delegates a focused research or visualization task to a registered specialist selected by skill fit. Gemini produces a structured Markdown artifact. The worker uses model knowledge, states assumptions, and does not browse the web or execute code.",
   },
   {
     id: "rubric-verification",
-    title: "The Automated Code & Deliverable Rubric",
+    title: "The Deliverable Review Rubric",
     author: "Council of Auditors",
     volume: "Volume IV",
     color: "#957fa8",
     content:
-      "Deliverables are evaluated under four golden tenets: First, address the assigned directive directly. Second, clearly distinguish empirical evidence from speculative assumptions. Third, provide executable visualization or data specifications. Fourth, maintain 100% adherence to the requested format.",
+      "Claude reviews whether the text addresses the task, remains internally consistent, and states its limits. The server also validates the artifact's format and size. Chart specifications are text instructions rather than executed charts. A successful review permits payment settlement.",
   },
 ];
 
@@ -146,7 +146,7 @@ export function GuildBookshelfModal({ onClose }: GuildBookshelfModalProps) {
                 Source: BountyMesh Protocol Architecture
               </span>
               <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--accent-green-bright)" }}>
-                Verified Manuscript
+                Workflow Guide
               </span>
             </div>
           </div>

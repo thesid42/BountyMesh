@@ -7,6 +7,34 @@ class ArcadeAudioEngine {
   public voiceEnabled: boolean = true;
   public playbackRate: number = 1.0;
   private currentSource: AudioBufferSourceNode | null = null;
+  private currentPlaybackResolve: (() => void) | null = null;
+  private pendingSpeechResolve: (() => void) | null = null;
+  private speechEpoch = 0;
+
+  private speechIsActive(epoch: number): boolean {
+    return epoch === this.speechEpoch && this.enabled && this.voiceEnabled;
+  }
+
+  private cancelCurrentPlayback() {
+    const resolvePlayback = this.currentPlaybackResolve;
+    this.currentPlaybackResolve = null;
+    resolvePlayback?.();
+    const source = this.currentSource;
+    this.currentSource = null;
+    if (source) {
+      try {
+        source.stop();
+        source.disconnect();
+      } catch {
+        // It may already have ended.
+      }
+    }
+    this.pendingSpeechResolve?.();
+    this.pendingSpeechResolve = null;
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+  }
 
   public initCtx(): AudioContext | null {
     if (typeof window === "undefined") return null;
@@ -77,148 +105,129 @@ class ArcadeAudioEngine {
 
   // Stop any active spoken audio immediately
   stopSpeech() {
-    if (this.currentSource) {
-      try {
-        this.currentSource.stop();
-        this.currentSource.disconnect();
-      } catch {
-        // Already stopped
-      }
-      this.currentSource = null;
-    }
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
+    this.speechEpoch += 1;
+    this.cancelCurrentPlayback();
   }
 
-  // Play base64-encoded audio returned by Google Gemini (Supports WAV, PCM, or MP3)
-  async playBase64Audio(base64: string, mimeType = "audio/wav"): Promise<void> {
+  // Play provider audio. Raw PCM fallback is accepted only when its MIME type
+  // explicitly identifies mono 16-bit PCM and supplies a sample rate.
+  async playBase64Audio(base64: string, mimeType = "audio/wav", expectedEpoch?: number): Promise<boolean> {
+    const epoch = expectedEpoch ?? ++this.speechEpoch;
+    if (expectedEpoch === undefined) this.cancelCurrentPlayback();
+    if (!this.speechIsActive(epoch)) return false;
     const ctx = this.initCtx();
-    if (!ctx) return;
+    if (!ctx) return false;
 
-    this.stopSpeech();
-
-    // Ensure AudioContext is active
-    if (ctx.state === "suspended") {
-      await ctx.resume();
+    try {
+      if (ctx.state === "suspended") await ctx.resume();
+    } catch {
+      return false;
     }
+    if (!this.speechIsActive(epoch)) return false;
 
-    // Decode base64 to binary buffer
-    const binary = atob(base64);
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binary.charCodeAt(i);
+    let bytes: Uint8Array;
+    try {
+      const binary = atob(base64);
+      bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    } catch {
+      return false;
     }
 
     let audioBuffer: AudioBuffer | null = null;
-
-    // 1. First attempt: Standard browser decodeAudioData with universal Promise + Callback wrapper
     try {
       audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
         let settled = false;
+        const accept = (buffer: AudioBuffer) => {
+          if (!settled) { settled = true; resolve(buffer); }
+        };
+        const decline = (error: DOMException | Error | null) => {
+          if (!settled) { settled = true; reject(error ?? new Error("Audio decoding failed")); }
+        };
         try {
-          const promise = ctx.decodeAudioData(
-            bytes.buffer.slice(0),
-            (buf) => {
-              if (!settled) {
-                settled = true;
-                resolve(buf);
-              }
-            },
-            (err) => {
-              if (!settled) {
-                settled = true;
-                reject(err);
-              }
-            }
-          );
-          if (promise && typeof (promise as unknown as Promise<AudioBuffer>).then === "function") {
-            (promise as unknown as Promise<AudioBuffer>)
-              .then((buf) => {
-                if (!settled) {
-                  settled = true;
-                  resolve(buf);
-                }
-              })
-              .catch((err) => {
-                if (!settled) {
-                  settled = true;
-                  reject(err);
-                }
-              });
+          const decodeCopy = new ArrayBuffer(bytes.byteLength);
+          new Uint8Array(decodeCopy).set(bytes);
+          const result = ctx.decodeAudioData(decodeCopy, accept, decline);
+          if (result && typeof (result as Promise<AudioBuffer>).then === "function") {
+            result.then(accept, decline);
           }
-        } catch (e) {
-          reject(e);
+        } catch (error) {
+          decline(error instanceof Error ? error : new Error("Audio decoding failed"));
         }
       });
     } catch {
-      // 2. Second attempt: Raw 24kHz 16-bit linear PCM from Gemini
+      if (!this.speechIsActive(epoch)) return false;
+      const normalizedMime = mimeType.toLowerCase();
+      const explicitPcm = /^audio\/(?:l16|pcm)(?:\s*;|$)/.test(normalizedMime);
+      const rate = normalizedMime.match(/(?:^|;)\s*rate\s*=\s*(\d+)/)?.[1];
+      const channels = normalizedMime.match(/(?:^|;)\s*channels\s*=\s*(\d+)/)?.[1];
+      const sampleRate = rate ? Number(rate) : 0;
+      if (!explicitPcm || !sampleRate || sampleRate < 8000 || sampleRate > 96000
+        || (channels !== undefined && Number(channels) !== 1) || bytes.byteLength === 0 || bytes.byteLength % 2 !== 0) {
+        return false;
+      }
       try {
-        const sampleRate = mimeType.includes("24000") ? 24000 : 24000;
-        const int16Array = new Int16Array(bytes.buffer);
-        audioBuffer = ctx.createBuffer(1, int16Array.length, sampleRate);
+        audioBuffer = ctx.createBuffer(1, bytes.byteLength / 2, sampleRate);
         const channel = audioBuffer.getChannelData(0);
-        for (let i = 0; i < int16Array.length; i++) {
-          channel[i] = int16Array[i] / 32768;
-        }
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        for (let i = 0; i < channel.length; i++) channel[i] = view.getInt16(i * 2, true) / 32768;
       } catch {
-        audioBuffer = null;
+        return false;
       }
     }
 
-    if (!audioBuffer) return;
-
-    return new Promise((resolve) => {
-      if (!ctx || !audioBuffer) {
-        resolve();
-        return;
-      }
-
+    if (!audioBuffer || !this.speechIsActive(epoch)) return false;
+    return new Promise<boolean>((resolve) => {
+      if (!this.speechIsActive(epoch)) { resolve(false); return; }
       const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      if (this.playbackRate && this.playbackRate !== 1) {
-        source.playbackRate.value = this.playbackRate;
-      }
+      source.buffer = audioBuffer!;
+      if (this.playbackRate && this.playbackRate !== 1) source.playbackRate.value = this.playbackRate;
       source.connect(ctx.destination);
       this.currentSource = source;
 
       let resolved = false;
-      const done = () => {
-        if (!resolved) {
-          resolved = true;
-          if (this.currentSource === source) {
-            this.currentSource = null;
-          }
-          resolve();
-        }
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const finish = (played: boolean) => {
+        if (resolved) return;
+        resolved = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        if (this.currentSource === source) this.currentSource = null;
+        if (this.currentPlaybackResolve === cancel) this.currentPlaybackResolve = null;
+        resolve(played);
       };
-
-      const durationMs = (audioBuffer.duration / (this.playbackRate || 1)) * 1000;
-      const timeoutId = setTimeout(done, durationMs + 400);
-
-      source.onended = () => {
-        clearTimeout(timeoutId);
-        done();
-      };
-
-      source.start(0);
+      const cancel = () => finish(false);
+      this.currentPlaybackResolve = cancel;
+      source.onended = () => finish(this.speechIsActive(epoch));
+      timeoutId = setTimeout(() => finish(this.speechIsActive(epoch)), (audioBuffer!.duration / (this.playbackRate || 1)) * 1000 + 400);
+      try {
+        if (!this.speechIsActive(epoch)) { finish(false); return; }
+        source.start(0);
+      } catch {
+        finish(false);
+      }
     });
   }
 
   // Fallback to browser speech synthesis if model audio is unavailable
   speakFallback(
     speaker: "traveler" | "claude" | "gemini" | "specialist",
-    text: string
+    text: string,
+    expectedEpoch?: number
   ): Promise<void> {
-    if (typeof window === "undefined" || !window.speechSynthesis) {
-      return new Promise((resolve) => setTimeout(resolve, Math.min(text.length * 50, 3000)));
-    }
-
-    this.stopSpeech();
+    const epoch = expectedEpoch ?? ++this.speechEpoch;
+    if (expectedEpoch === undefined) this.cancelCurrentPlayback();
+    if (!this.speechIsActive(epoch) || typeof window === "undefined" || !window.speechSynthesis) return Promise.resolve();
 
     return new Promise((resolve) => {
       const utterance = new SpeechSynthesisUtterance(text);
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (this.pendingSpeechResolve === finish) this.pendingSpeechResolve = null;
+        resolve();
+      };
+      this.pendingSpeechResolve = finish;
 
       switch (speaker) {
         case "claude":
@@ -256,9 +265,10 @@ class ArcadeAudioEngine {
         }
       }
 
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
+      utterance.onend = finish;
+      utterance.onerror = finish;
 
+      if (!this.speechIsActive(epoch)) { finish(); return; }
       window.speechSynthesis.speak(utterance);
     });
   }
@@ -270,22 +280,22 @@ class ArcadeAudioEngine {
     audioBase64?: string;
     audioMimeType?: string;
   }): Promise<void> {
-    if (!this.enabled || !this.voiceEnabled) {
-      return new Promise((resolve) => setTimeout(resolve, Math.min(turn.text.length * 35, 2200)));
-    }
+    if (!this.enabled || !this.voiceEnabled) return;
+    const epoch = ++this.speechEpoch;
+    this.cancelCurrentPlayback();
 
     // If Gemini provided actual voice audio, play the live model speech!
     if (turn.audioBase64) {
       try {
-        await this.playBase64Audio(turn.audioBase64, turn.audioMimeType);
-        return;
+        const played = await this.playBase64Audio(turn.audioBase64, turn.audioMimeType, epoch);
+        if (played || !this.speechIsActive(epoch)) return;
       } catch {
         // Fall back if decode fails
       }
     }
 
     // Fallback to speech synthesis
-    await this.speakFallback(turn.speaker, turn.text);
+    await this.speakFallback(turn.speaker, turn.text, epoch);
   }
 
   // 8-bit coin pickup arpeggio (B5 -> E6)

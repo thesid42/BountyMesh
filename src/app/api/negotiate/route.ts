@@ -1,7 +1,11 @@
 import { getConfig, getEnv } from "@/lib/config";
+import { HttpError, authorize } from "@/lib/http";
+import { getSnapshot } from "@/lib/engine";
+import type { Run, Snapshot } from "@/lib/contracts";
+import { synthesizeNegotiationVoice } from "@/lib/negotiation-audio";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 45;
 
 export interface NegotiationTurn {
   id: string;
@@ -15,281 +19,185 @@ export interface NegotiationTurn {
   audioMimeType?: string;
 }
 
-function cleanJson(text: string): unknown {
-  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+interface NegotiationInput {
+  runId?: string;
+  idempotencyKey?: string;
+  synthesizeAudio: boolean;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_BODY_BYTES = 8_192;
+
+async function readInput(request: Request): Promise<NegotiationInput> {
+  const contentType = request.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
+  if (contentType !== "application/json") throw new HttpError(415, "Send a JSON request body");
+  const declaredLength = Number(request.headers.get("content-length") ?? 0);
+  if (declaredLength > MAX_BODY_BYTES) throw new HttpError(413, "Request body is too large");
+
+  let raw: string;
   try {
-    return JSON.parse(cleaned);
-  } catch {
-    return null;
+    if (!request.body) throw new Error("empty");
+    const reader = request.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      total += result.value.byteLength;
+      if (total > MAX_BODY_BYTES) {
+        await reader.cancel();
+        throw new HttpError(413, "Request body is too large");
+      }
+      chunks.push(result.value);
+    }
+    raw = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks));
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(400, "Invalid request body");
   }
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw new HttpError(400, "Request body must be valid JSON"); }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new HttpError(400, "Request body must be an object");
+  const body = parsed as Record<string, unknown>;
+  if (Object.keys(body).some((key) => !["runId", "idempotencyKey", "synthesizeAudio"].includes(key))) {
+    throw new HttpError(400, "Only persisted run identifiers and synthesizeAudio are accepted");
+  }
+  if (body.runId !== undefined && (typeof body.runId !== "string" || !UUID.test(body.runId))) throw new HttpError(400, "runId must be a UUID");
+  if (body.idempotencyKey !== undefined && (typeof body.idempotencyKey !== "string" || !UUID.test(body.idempotencyKey))) throw new HttpError(400, "idempotencyKey must be a UUID");
+  if (typeof body.runId !== "string" && typeof body.idempotencyKey !== "string") throw new HttpError(400, "A persisted runId or idempotencyKey is required");
+  if (body.synthesizeAudio !== undefined && typeof body.synthesizeAudio !== "boolean") throw new HttpError(400, "synthesizeAudio must be a boolean");
+  return {
+    runId: body.runId as string | undefined,
+    idempotencyKey: body.idempotencyKey as string | undefined,
+    synthesizeAudio: body.synthesizeAudio === true,
+  };
 }
 
-// Synthesize spoken voice using Google Gemini TTS model
-async function synthesizeVoiceWithGemini(
+function cleanText(value: string, max = 500): string {
+  return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function makeTurn(
+  id: number,
+  speaker: NegotiationTurn["speaker"],
+  speakerName: string,
+  voice: NegotiationTurn["voice"],
   text: string,
-  voiceName: string,
-  apiKey: string
-): Promise<{ data: string; mimeType: string } | null> {
-  const models = ["gemini-3.8-flash-tts", "gemini-2.5-flash-preview-tts", "gemini-3.1-flash-tts-preview"];
-
-  for (const model of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const payload = {
-        contents: [{ parts: [{ text }] }],
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName,
-              },
-            },
-          },
-        },
-      };
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(10_000),
-      });
-
-      if (!res.ok) continue;
-
-      const data = await res.json();
-      const inlineData = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
-      if (inlineData?.data) {
-        return {
-          data: inlineData.data,
-          mimeType: inlineData.mimeType || "audio/wav",
-        };
-      }
-    } catch {
-      // Try next model if any
-    }
-  }
-
-  return null;
+  dialogueBadge: string,
+  color: string,
+): NegotiationTurn {
+  return { id: "turn-" + id, speaker, speakerName, voice, text: cleanText(text), dialogueBadge: cleanText(dialogueBadge, 64), color };
 }
 
-// Generate live multi-agent dialogue text via Google Gemini
-async function generateDialogueWithGemini(
-  goal: string,
-  rewardFormatted: string,
-  apiKey: string
-): Promise<Omit<NegotiationTurn, "audioBase64" | "audioMimeType">[] | null> {
-  const models = ["gemini-3.8-flash", "gemini-flash-latest"];
+function buildPersistedTurns(snapshot: Snapshot, run: Run): NegotiationTurn[] {
+  const bounty = snapshot.bounties.find((item) => item.runId === run.id) ?? null;
+  const worker = bounty?.workerId ? snapshot.agents.find((item) => item.id === bounty.workerId) ?? null : null;
+  const hold = bounty ? snapshot.ledger.find((entry) => entry.bountyId === bounty.id && entry.kind === "hold") ?? null : null;
+  const refund = bounty ? snapshot.ledger.some((entry) => entry.bountyId === bounty.id && entry.kind === "refund") : false;
+  const payout = bounty ? snapshot.ledger.find((entry) => entry.bountyId === bounty.id && entry.kind === "payout") ?? null : null;
+  const holdIsActive = Boolean(hold && !refund && bounty?.escrowStatus === "held" && bounty.status !== "failed");
+  const payoutIsRecorded = Boolean(payout && payout.provider === "stripe" && bounty?.status === "paid" && bounty.escrowStatus === "settled" && bounty.transferId);
+  const reward = bounty?.rewardCents ?? run.rewardCents ?? null;
+  const amount = reward === null ? null : "$" + (reward / 100).toFixed(2);
+  const runState = run.status;
+  const bountyState = bounty?.status ?? "not created";
+  const match = bounty?.similarity;
+  const goal = cleanText(run.goal, 320);
 
-  const prompt = `You are orchestrating a live multi-agent conversation in the BountyMesh guild between autonomous AI agents.
-Client Quest Objective: "${goal}"
-Escrow Reward: ${rewardFormatted}
-
-The participating agents talking to each other are:
-1. "traveler" (Traveler / Client who specifies requirements and locks escrow)
-2. "claude" (Claude Orchestrator who evaluates vector similarity, decomposes deliverables, and awards subcontracts)
-3. "gemini" (Gemini Scholar specialist worker who analyzes the task domain, pitches data synthesis & visualization spec, and submits a bid)
-4. "specialist" (Specialist Ranger worker who pitches competitive benchmarking and rubric verification)
-
-Create an authentic, intelligent 5-turn conversation where they directly discuss and negotiate this specific task:
-- Turn 1 (speaker: "traveler", speakerName: "Traveler", voice: "Kore"): Traveler specifies the exact goal and the ${rewardFormatted} escrow stake.
-- Turn 2 (speaker: "claude", speakerName: "Claude Orchestrator", voice: "Charon"): Claude breaks down the objective requirements and invites capability bids from registered specialist agents.
-- Turn 3 (speaker: "gemini", speakerName: "Gemini Scholar", voice: "Puck"): Gemini Scholar pitches an exact methodology addressing the task, citing ~94% pgvector capability alignment, and bids for the contract.
-- Turn 4 (speaker: "specialist", speakerName: "Specialist Ranger", voice: "Fenrir"): Specialist Ranger provides a competitive angle or rubric check, acknowledging Gemini's alignment on this task.
-- Turn 5 (speaker: "claude", speakerName: "Claude Orchestrator", voice: "Charon"): Claude evaluates vector similarity, awards the contract to Gemini Scholar for ${rewardFormatted}, and confirms the escrow lock.
-
-Return ONLY a valid JSON array of 5 objects (no markdown, no emojis). Each object must have:
-- "id": string ("turn-1", "turn-2", ...)
-- "speaker": exactly "traveler", "claude", "gemini", or "specialist"
-- "speakerName": string
-- "voice": "Kore" | "Charon" | "Puck" | "Fenrir"
-- "text": string (the in-character dialogue line speaking to the others)
-- "dialogueBadge": string (short 4-6 word summary for speech bubble)
-- "color": hex color code`;
-
-  for (const model of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            thinkingConfig: { thinkingLevel: "low" },
-            maxOutputTokens: 1024,
-            responseMimeType: "application/json",
-          },
-        }),
-        signal: AbortSignal.timeout(8_000),
-      });
-
-      if (!response.ok) continue;
-
-      const data = await response.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawText) continue;
-
-      const parsed = cleanJson(rawText);
-      if (Array.isArray(parsed) && parsed.length >= 4) {
-        return parsed.map((item: any, idx: number) => {
-          let speaker: NegotiationTurn["speaker"] = "traveler";
-          let voice: NegotiationTurn["voice"] = "Kore";
-          const s = String(item.speaker || "").toLowerCase();
-
-          if (s.includes("claude")) {
-            speaker = "claude";
-            voice = "Charon";
-          } else if (s.includes("gemini")) {
-            speaker = "gemini";
-            voice = "Puck";
-          } else if (s.includes("specialist") || s.includes("ranger")) {
-            speaker = "specialist";
-            voice = "Fenrir";
-          } else {
-            const defaults: NegotiationTurn["speaker"][] = ["traveler", "claude", "gemini", "specialist", "claude"];
-            const voiceDefaults: NegotiationTurn["voice"][] = ["Kore", "Charon", "Puck", "Fenrir", "Charon"];
-            speaker = defaults[idx] || "claude";
-            voice = voiceDefaults[idx] || "Charon";
-          }
-
-          const defaultColors: Record<NegotiationTurn["speaker"], string> = {
-            traveler: "#d4b86a",
-            claude: "#8f79a6",
-            gemini: "#6d8e9c",
-            specialist: "#84a96e",
-          };
-
-          return {
-            id: item.id || `turn-${idx + 1}`,
-            speaker,
-            speakerName: item.speakerName || (speaker === "claude" ? "Claude Orchestrator" : speaker === "gemini" ? "Gemini Scholar" : speaker === "specialist" ? "Specialist Ranger" : "Traveler"),
-            voice,
-            text: String(item.text || "").replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "").trim(),
-            dialogueBadge: String(item.dialogueBadge || "").replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "").trim(),
-            color: item.color || defaultColors[speaker],
-          };
-        });
-      }
-    } catch {
-      // Try next model
-    }
-  }
-
-  return null;
-}
-
-// Default fallback turns
-function getDefaultTurns(goal: string, rewardFormatted: string): NegotiationTurn[] {
   return [
-    {
-      id: "turn-1",
-      speaker: "traveler",
-      speakerName: "Traveler",
-      voice: "Kore",
-      text: `Traveler seeking guild assistance for this quest: ${goal}. I am locking ${rewardFormatted} in verified escrow.`,
-      dialogueBadge: `QUEST: ${goal.slice(0, 24)}... [${rewardFormatted}]`,
-      color: "#d4b86a",
-    },
-    {
-      id: "turn-2",
-      speaker: "claude",
-      speakerName: "Claude Orchestrator",
-      voice: "Charon",
-      text: `Quest directive logged. Generating 768-dimensional capability embeddings and requesting specialist bids.`,
-      dialogueBadge: "Matching capability vectors...",
-      color: "#8f79a6",
-    },
-    {
-      id: "turn-3",
-      speaker: "gemini",
-      speakerName: "Gemini Scholar",
-      voice: "Puck",
-      text: `Gemini Scholar bidding. Capability fit 94.2% on market synthesis and visualization planning.`,
-      dialogueBadge: "BID: 94.2% Fit · Ready to execute",
-      color: "#6d8e9c",
-    },
-    {
-      id: "turn-4",
-      speaker: "specialist",
-      speakerName: "Specialist Ranger",
-      voice: "Fenrir",
-      text: `Specialist Ranger bidding. Prepared for competitive rubric verification with 88.5% vector similarity.`,
-      dialogueBadge: "BID: 88.5% Fit · Standby",
-      color: "#84a96e",
-    },
-    {
-      id: "turn-5",
-      speaker: "claude",
-      speakerName: "Claude Orchestrator",
-      voice: "Charon",
-      text: `Evaluation complete. Gemini Scholar demonstrates optimal semantic alignment at 94.2%. Contract awarded at ${rewardFormatted}. Escrow secured in Vault. Proceed with delivery.`,
-      dialogueBadge: `Awarded to Gemini for ${rewardFormatted}`,
-      color: "#84a96e",
-    },
+    makeTurn(1, "traveler", "Traveler", "Kore", "The recorded request is: " + goal + ".", "Persisted request selected", "#d4b86a"),
+    makeTurn(2, "claude", "Claude Orchestrator", "Charon", "The persisted run status is " + runState + ". The bounty status is " + bountyState + ".", "Run state from database", "#8f79a6"),
+    makeTurn(3, worker?.id === "22222222-2222-4222-8222-222222222222" ? "gemini" : "specialist", worker?.name ?? "Claude Orchestrator", worker ? "Puck" : "Charon",
+      worker
+        ? "The persisted bounty assigns this work to " + cleanText(worker.name, 80) + (typeof match === "number" ? " with " + (match * 100).toFixed(1) + "% recorded similarity." : ".")
+        : "No worker assignment is recorded for this bounty.",
+      worker && typeof match === "number" ? "Recorded skill match" : "Worker assignment state",
+      worker?.id === "22222222-2222-4222-8222-222222222222" ? "#6d8e9c" : "#84a96e"),
+    makeTurn(4, "claude", "Claude Orchestrator", "Charon",
+      bounty?.deliverable
+        ? "A deliverable is persisted for review status " + (bounty.review ? "reviewed" : "awaiting review") + "."
+        : "No deliverable is persisted yet. Current bounty status: " + bountyState + ".",
+      bounty?.deliverable ? "Persisted deliverable state" : "No deliverable recorded", "#8f79a6"),
+    makeTurn(5, "traveler", "Traveler", "Kore",
+      payoutIsRecorded && amount
+        ? "A " + amount + " payout is recorded in the ledger" + (bounty?.transferId ? " with a transfer receipt." : ".")
+        : holdIsActive && amount
+          ? "A " + amount + " hold is recorded. No completed payout is recorded."
+          : "No active hold or completed payout is recorded.",
+      payoutIsRecorded ? "Payout recorded" : holdIsActive ? "Hold recorded, unpaid" : "No hold or payout recorded",
+      payoutIsRecorded ? "#84a96e" : "#d4b86a"),
   ];
+}
+
+const trustedSpeechLine = (index: number, run: Run, snapshot: Snapshot): string => {
+  const bounty = snapshot.bounties.find((item) => item.runId === run.id) ?? null;
+  const runState = run.status;
+  const bountyState = bounty?.status ?? "not created";
+  const hold = bounty ? snapshot.ledger.some((entry) => entry.bountyId === bounty.id && entry.kind === "hold") : false;
+  const refund = bounty ? snapshot.ledger.some((entry) => entry.bountyId === bounty.id && entry.kind === "refund") : false;
+  const payout = bounty ? snapshot.ledger.some((entry) => entry.bountyId === bounty.id && entry.kind === "payout"
+    && entry.provider === "stripe" && Boolean(bounty.transferId) && bounty.status === "paid" && bounty.escrowStatus === "settled") : false;
+  const activeHold = hold && !refund && bounty?.escrowStatus === "held" && bounty.status !== "failed";
+  if (index === 0) return "A persisted BountyMesh request is selected.";
+  if (index === 1) return "Run status " + runState + ". Bounty status " + bountyState + ".";
+  if (index === 2) return "Worker assignment status " + (bounty?.workerId ? "recorded" : "not recorded") + ".";
+  if (index === 3) return "Deliverable status " + (bounty?.deliverable ? "recorded" : "not recorded") + ".";
+  if (payout && bounty?.status === "paid") return "Payout recorded.";
+  if (activeHold) return "Escrow hold recorded. Payout not recorded.";
+  return "No active hold or completed payout is recorded.";
+};
+
+function responseError(error: unknown): Response {
+  if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status });
+  return Response.json({ error: "Negotiation data is temporarily unavailable" }, { status: 500 });
 }
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json().catch(() => ({}));
-    const goal = typeof body.goal === "string" && body.goal.trim() ? body.goal.trim() : "Market analysis and visualization brief";
-    const rewardCents = typeof body.rewardCents === "number" && body.rewardCents >= 50 ? body.rewardCents : 50;
-    const rewardFormatted = `$${(rewardCents / 100).toFixed(2)}`;
-
-    const clientApiKey = request.headers.get("x-gemini-key")?.trim() || "";
-    const geminiKey = clientApiKey || getEnv("GEMINI_API_KEY");
-
-    let turns: NegotiationTurn[] = [];
-    let provider = "guild-engine";
-
-    // 1. Generate in-character dialogue lines with Gemini
-    if (geminiKey) {
-      const generated = await generateDialogueWithGemini(goal, rewardFormatted, geminiKey);
-      if (generated && generated.length >= 4) {
-        turns = generated as NegotiationTurn[];
-        provider = "gemini-live";
-      }
+    authorize(request, true);
+    const input = await readInput(request);
+    const config = getConfig();
+    const localTestFixture = process.env.NODE_ENV === "test"
+      && getEnv("BOUNTYMESH_TEST_FIXTURES") === "local"
+      && getEnv("BOUNTYMESH_MODE") === "demo";
+    if (config.mode !== "live" && !localTestFixture) throw new HttpError(503, "Negotiation requires the connected online workspace");
+    if (config.mode === "live" && (!config.ready || config.storage !== "supabase" || config.payments !== "stripe")) {
+      throw new HttpError(503, "The connected online workspace is not fully configured");
     }
 
-    if (turns.length === 0) {
-      turns = getDefaultTurns(goal, rewardFormatted);
+    const snapshot = await getSnapshot();
+    const byId = input.runId ? snapshot.runs.find((item) => item.id === input.runId) ?? null : null;
+    const byKey = input.idempotencyKey ? snapshot.runs.find((item) => item.idempotencyKey === input.idempotencyKey) ?? null : null;
+    if (byId && byKey && byId.id !== byKey.id) throw new HttpError(400, "The supplied identifiers refer to different runs");
+    if ((input.runId && !byId) || (input.idempotencyKey && !byKey)) throw new HttpError(404, "The selected persisted run was not found");
+    const run = byId ?? byKey;
+    if (!run) throw new HttpError(404, "The selected persisted run was not found");
+
+    const turns = buildPersistedTurns(snapshot, run);
+    const apiKey = input.synthesizeAudio && config.mode === "live" ? getEnv("GEMINI_API_KEY") : "";
+    let hasAudio = false;
+    if (apiKey) {
+      const voices: NegotiationTurn["voice"][] = ["Kore", "Charon", "Puck", "Charon", "Kore"];
+      const audio = await Promise.all(turns.map((_, index) => synthesizeNegotiationVoice(trustedSpeechLine(index, run, snapshot), voices[index], apiKey)));
+      audio.forEach((result, index) => {
+        if (!result) return;
+        turns[index].audioBase64 = result.data;
+        turns[index].audioMimeType = result.mimeType;
+        hasAudio = true;
+      });
     }
 
-    // 2. Synthesize audio for each character turn using Google Gemini TTS!
-    if (geminiKey) {
-      const voiceMap: Record<NegotiationTurn["speaker"], "Kore" | "Charon" | "Puck" | "Fenrir"> = {
-        traveler: "Kore",
-        claude: "Charon",
-        gemini: "Puck",
-        specialist: "Fenrir",
-      };
-
-      await Promise.all(
-        turns.map(async (turn) => {
-          const voice = turn.voice || voiceMap[turn.speaker] || "Kore";
-          const audio = await synthesizeVoiceWithGemini(turn.text, voice, geminiKey);
-          if (audio?.data) {
-            turn.audioBase64 = audio.data;
-            turn.audioMimeType = audio.mimeType || "audio/wav";
-          }
-        })
-      );
-    }
-
-    const hasAudio = turns.some((t) => Boolean(t.audioBase64));
-
+    const audioStatus = !input.synthesizeAudio ? "not-requested" : hasAudio ? "available" : "unavailable";
     return Response.json({
       success: true,
-      provider: hasAudio ? "gemini-audio" : provider,
+      mode: config.mode,
+      provider: "persisted-state",
       hasAudio,
+      audioStatus,
       turns,
     });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to generate negotiation" },
-      { status: 500 }
-    );
+    return responseError(error);
   }
 }

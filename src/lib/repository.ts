@@ -187,12 +187,23 @@ export async function matchAgents(query: number[], count = 3): Promise<Array<{ a
   }).sort((a, b) => b.similarity - a.similarity).slice(0, count);
 }
 
-export function subscribeChanges(onChange: () => void): () => void {
-  if (!isSupabase()) return () => undefined;
-  const channel = client().channel("bountymesh-snapshot-stream").on("postgres_changes", { event: "*", schema: "public", table: "activity" }, onChange)
+export function subscribeSupabaseChanges(supabaseClient: SupabaseClient, onChange: () => void): () => void {
+  const channel = supabaseClient.channel("bountymesh-snapshot-stream-" + randomUUID())
+    .on("postgres_changes", { event: "*", schema: "public", table: "activity" }, onChange)
     .on("postgres_changes", { event: "*", schema: "public", table: "bounties" }, onChange)
     .on("postgres_changes", { event: "*", schema: "public", table: "ledger" }, onChange)
     .on("postgres_changes", { event: "*", schema: "public", table: "agents" }, onChange)
-    .on("postgres_changes", { event: "*", schema: "public", table: "runs" }, onChange).subscribe();
-  return () => { void client().removeChannel(channel); };
+    .on("postgres_changes", { event: "*", schema: "public", table: "runs" }, onChange)
+    .subscribe();
+  let closed = false;
+  return () => {
+    if (closed) return;
+    closed = true;
+    void supabaseClient.removeChannel(channel).catch(() => undefined);
+  };
+}
+
+export function subscribeChanges(onChange: () => void): () => void {
+  if (!isSupabase()) return () => undefined;
+  return subscribeSupabaseChanges(client(), onChange);
 }

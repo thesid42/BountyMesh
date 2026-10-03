@@ -3,7 +3,12 @@ import type { AppConfig } from "./contracts";
 const env = (key: string) => process.env[key]?.trim() ?? "";
 
 export function getConfig(): AppConfig {
-  const mode = env("BOUNTYMESH_MODE").toLowerCase() === "live" ? "live" : "demo";
+  // Local adapters are restricted to explicitly isolated unit-test fixtures.
+  // Every development and production app session uses the online integrations.
+  const localTestFixture = process.env.NODE_ENV === "test"
+    && env("BOUNTYMESH_TEST_FIXTURES") === "local"
+    && env("BOUNTYMESH_MODE") === "demo";
+  const mode = localTestFixture ? "demo" : "live";
   const supabaseReady = Boolean(env("NEXT_PUBLIC_SUPABASE_URL") && env("SUPABASE_SERVICE_ROLE_KEY"));
   const stripeKey = env("STRIPE_SECRET_KEY");
   const stripeReady = /^sk_test_|^rk_test_/.test(stripeKey) && Boolean(env("STRIPE_CONNECTED_ACCOUNT_ID"));

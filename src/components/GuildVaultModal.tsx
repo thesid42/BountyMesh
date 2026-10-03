@@ -37,7 +37,7 @@ export function GuildVaultModal({
             </span>
             <div>
               <h2 className="rpg-name">Guild Escrow Vault & Treasury</h2>
-              <span className="rpg-subtext">Cryptographic multi-agent escrow settlement lock</span>
+              <span className="rpg-subtext">Recorded payment holds and worker transfers</span>
             </div>
           </div>
 
@@ -56,7 +56,7 @@ export function GuildVaultModal({
           </div>
 
           <div className="rpg-stat-box">
-            <span className="rpg-stat-label">ACTIVE ESCROW HELD</span>
+            <span className="rpg-stat-label">FUNDS PENDING SETTLEMENT</span>
             <b className="rpg-stat-val" style={{ color: "var(--accent-gold)" }}>
               ${(totalHeld / 100).toFixed(2)}
             </b>
@@ -65,7 +65,7 @@ export function GuildVaultModal({
           <div className="rpg-stat-box">
             <span className="rpg-stat-label">SETTLEMENT RAIL</span>
             <b className="rpg-stat-val" style={{ color: "var(--accent-blue)", fontSize: 14 }}>
-              {providerName === "stripe" ? "Stripe Escrow" : "Local Testnet"}
+              {providerName === "stripe" ? "Stripe test" : "Demo credits"}
             </b>
           </div>
         </div>
@@ -73,10 +73,12 @@ export function GuildVaultModal({
         {/* Escrow Guarantee Text */}
         <div style={{ marginTop: 14, background: "var(--bg-input)", border: "2px solid var(--border-outer)", borderRadius: "var(--radius-xs)", padding: 12 }}>
           <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--accent-gold)", display: "block", marginBottom: 4 }}>
-            ATOMIC SETTLEMENT GUARANTEE
+            PAYMENT WORKFLOW
           </span>
           <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5, margin: 0 }}>
-            Every task reward is secured in an immutable escrow lock before worker claiming. Payout is released directly to the specialist&apos;s wallet upon 100% automated rubric verification by Claude. Unfulfilled or rejected tasks are automatically refunded.
+            {providerName === "stripe"
+              ? "Stripe test mode authorizes the reward before matching, captures it after Claude approves the deliverable, and transfers it to the configured connected account. A recorded payout confirms settlement. Failed work releases its authorization when possible; interrupted settlement can require a retry."
+              : "Demo credits are held before matching and recorded as a worker payout after review. Failed work releases the held credits. These entries do not move money."}
           </p>
         </div>
 
@@ -99,7 +101,7 @@ export function GuildVaultModal({
                     <tr key={entry.id} className="fintech-row">
                       <td style={{ padding: "8px 12px", fontSize: 12 }}>
                         <span style={{ color: entry.kind === "payout" ? "var(--accent-green-bright)" : "var(--accent-gold)", fontWeight: 600 }}>
-                          {entry.kind === "payout" ? "Payout Released" : "Escrow Hold"}
+                          {entry.kind === "payout" ? "Worker payout" : entry.kind === "refund" ? "Hold released" : "Payment hold"}
                         </span>
                       </td>
                       <td style={{ padding: "8px 12px", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent-blue)" }}>
@@ -110,7 +112,7 @@ export function GuildVaultModal({
                       </td>
                       <td style={{ padding: "8px 12px", textAlign: "right" }}>
                         <span className="mono-amount" style={{ color: entry.kind === "payout" ? "var(--accent-green-bright)" : "var(--text-main)", fontSize: 13 }}>
-                          {entry.kind === "refund" ? "+" : "-"}${(entry.amountCents / 100).toFixed(2)}
+                          ${(entry.amountCents / 100).toFixed(2)}
                         </span>
                       </td>
                     </tr>

@@ -90,7 +90,7 @@ export function GuildNoticeBoardModal({
                     className="arcade-btn-pill"
                     style={{ fontSize: 10, padding: "5px 10px" }}
                   >
-                    View Deliverable →
+                    {b.deliverable ? "View Deliverable →" : "Inspect Task →"}
                   </button>
                 </div>
               </div>

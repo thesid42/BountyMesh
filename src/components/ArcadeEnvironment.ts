@@ -987,7 +987,7 @@ function drawResearchTables(
 /**
  * 7. GUILD GOLD VAULT (Top Right)
  * - Heavy iron-banded oak treasure chest with brass corner brackets and shiny padlock
- * - Clean label showing the gold amount secured (`${totalPayoutStr} Gold Secured`)
+ * - Vault plaque displays cumulative recorded payouts marked as paid.
  */
 function drawGoldVault(
   ctx: CanvasRenderingContext2D,
@@ -1101,7 +1101,7 @@ function drawGoldVault(
     ctx.stroke();
   }
 
-  // Clean label showing the gold amount secured: `${totalPayoutStr} Gold Secured`
+  // Display cumulative recorded payouts marked as paid.
   ctx.font = "700 9px 'DM Sans', sans-serif";
   ctx.fillStyle = "#d4b86a";
   ctx.textAlign = "center";
@@ -1118,7 +1118,7 @@ function drawGoldVault(
 
   ctx.font = "700 11px 'JetBrains Mono', monospace";
   ctx.fillStyle = "#84a96e";
-  ctx.fillText(`${totalPayoutStr} Gold Secured`, vX + vW / 2, vY + vH - 9);
+  ctx.fillText("$" + totalPayoutStr + " Paid", vX + vW / 2, vY + vH - 9);
 
   ctx.textAlign = "left";
 }
@@ -1341,7 +1341,7 @@ function drawStrategyTable(
  * 4. Guild notice board with pinned task parchments and wax seals.
  * 5. Ancient bookshelf and alchemy cabinet with spellbook spines and scrolls.
  * 6. 3 Research tables for specialist agents with manuscripts, candle flames, and inkpot quill.
- * 7. Guild gold vault chest with iron bands, corner brackets, padlock, and gold secured label.
+ * 7. Guild gold vault chest with iron bands, corner brackets, padlock, and recorded payout label.
  * 8. Strategy table with realm map, hovering magical crystal, and floor halo during bidding.
  */
 export function drawGuildEnvironment(
