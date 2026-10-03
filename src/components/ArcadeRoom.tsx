@@ -45,23 +45,22 @@ export function ArcadeRoom({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [speed, setSpeed] = useState<1 | 2>(1);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [scanlines, setScanlines] = useState(false);
   const [gameLog, setGameLog] = useState<string[]>([
-    "★ SYSTEM: Arcade Guild Hall initialized.",
-    "★ CLAUDE: Standing by for autonomous micro-work.",
-    "★ READY: Click characters or floor to interact.",
+    "The Guild Hall is open. Fireplace crackles softly.",
+    "Claude Orchestrator reviews the quest parchment.",
+    "Ready: Click any character to inspect or click floor to walk.",
   ]);
   const [stagePhase, setStagePhase] = useState<"idle" | "entering" | "announcing" | "bidding" | "matched" | "executing" | "verified" | "paid">("idle");
   const [activeSpeech, setActiveSpeech] = useState<{ charId: string; text: string; tag: string } | null>(null);
 
-  // Characters List in Game State
+  // Characters in Game State
   const charactersRef = useRef<ArcadeCharacter[]>([
     {
       id: "questor-player",
-      name: "The Questor",
+      name: "Traveler",
       role: "questor",
       model: "Client Model",
-      color: "#f59e0b",
+      color: "#d4b86a",
       x: 140,
       y: 130,
       targetX: 140,
@@ -76,18 +75,18 @@ export function ArcadeRoom({
     },
     {
       id: "11111111-1111-4111-8111-111111111111",
-      name: "Claude Orchestrator",
+      name: "Claude",
       role: "orchestrator",
       model: "claude-sonnet-5",
-      color: "#a855f7",
+      color: "#8f79a6",
       x: 480,
       y: 190,
       targetX: 480,
       targetY: 190,
       facing: "down",
       state: "idle",
-      dialogue: "Awaiting Bounties...",
-      dialogueColor: "#c084fc",
+      dialogue: "Awaiting quests...",
+      dialogueColor: "#8f79a6",
       avatarType: "claude",
       level: 99,
       gold: 900,
@@ -95,10 +94,10 @@ export function ArcadeRoom({
     },
     {
       id: "22222222-2222-4222-8222-222222222222",
-      name: "Gemini Researcher",
+      name: "Gemini",
       role: "worker",
       model: "gemini-3.8-flash",
-      color: "#06b6d4",
+      color: "#6d8e9c",
       x: 740,
       y: 250,
       targetX: 740,
@@ -113,10 +112,10 @@ export function ArcadeRoom({
     },
     {
       id: "33333333-3333-4333-8333-333333333333",
-      name: "Specialist Researcher",
+      name: "Specialist",
       role: "worker",
       model: "gemini-3.8-flash",
-      color: "#10b981",
+      color: "#84a96e",
       x: 740,
       y: 380,
       targetX: 740,
@@ -131,10 +130,10 @@ export function ArcadeRoom({
     },
     {
       id: "sentinel-worker",
-      name: "Code Sentinel",
+      name: "Sentinel",
       role: "worker",
       model: "claude-3-haiku",
-      color: "#38bdf8",
+      color: "#c96b6b",
       x: 230,
       y: 380,
       targetX: 230,
@@ -154,7 +153,7 @@ export function ArcadeRoom({
     snapshot.agents.forEach((snapAgent) => {
       const char = charactersRef.current.find((c) => c.id === snapAgent.id);
       if (char) {
-        char.name = snapAgent.name;
+        char.name = snapAgent.name.split(" ")[0];
         char.gold = snapAgent.balanceCents;
         char.skills = snapAgent.skills;
         char.level = Math.max(1, snapAgent.tasksCompleted * 5 + 10);
@@ -162,7 +161,6 @@ export function ArcadeRoom({
     });
   }, [snapshot.agents]);
 
-  // Sound toggle sync
   const toggleSound = () => {
     const next = !soundEnabled;
     setSoundEnabled(next);
@@ -174,7 +172,7 @@ export function ArcadeRoom({
     setGameLog((prev) => [msg, ...prev.slice(0, 9)]);
   }, []);
 
-  // Run the full Arcade Bidding Showdown Animation Sequence
+  // Run the full Bidding Sequence
   const runArcadeSequence = useCallback(
     (customGoal?: string, customReward?: number) => {
       const goalText = customGoal || activeGoal || "Analyze the top opportunities for an AI agent marketplace and create a concise market brief.";
@@ -192,7 +190,7 @@ export function ArcadeRoom({
       // 1. Enter Room & Warp Sound
       setStagePhase("entering");
       arcadeAudio.playWarp();
-      addLog(`⚡ QUEST: Client enters the Arcade Guild Hall!`);
+      addLog(`Traveler arrived at the Guild.`);
       questor.x = 120;
       questor.y = 110;
       questor.targetX = 420;
@@ -200,28 +198,27 @@ export function ArcadeRoom({
       questor.state = "walking";
       questor.facing = "right";
 
-      // 2. Announce at Podium
+      // 2. Announce Task at Center Stage
       setTimeout(() => {
         setStagePhase("announcing");
         questor.state = "idle";
         questor.facing = "down";
-        questor.dialogue = `NEW BOUNTY: ${goalText.slice(0, 36)}... [${rewardFormatted}]`;
-        questor.dialogueColor = "#fbbf24";
-        setActiveSpeech({ charId: questor.id, text: `I need this micro-task solved: "${goalText}". Offering ${rewardFormatted} in verified escrow!`, tag: "CLIENT BOUNTY" });
+        questor.dialogue = `QUEST: ${goalText.slice(0, 28)}... [${rewardFormatted}]`;
+        questor.dialogueColor = "#d4b86a";
+        setActiveSpeech({ charId: questor.id, text: `Seeking specialist: "${goalText}". Offering ${rewardFormatted} gold in escrow.`, tag: "NEW QUEST" });
         arcadeAudio.playCoin();
-        addLog(`📢 CLIENT: "Posting ${rewardFormatted} bounty: ${goalText.slice(0, 45)}..."`);
+        addLog(`New quest posted: ${rewardFormatted} gold secured in Vault.`);
 
         // 3. Claude Broadcasts & Workers Gather for Bidding
         setTimeout(() => {
           setStagePhase("bidding");
-          claude.dialogue = "pgvector 768-D EMBEDDINGS BROADCASTING...";
-          claude.dialogueColor = "#c084fc";
+          claude.dialogue = "Matching capability vectors...";
+          claude.dialogueColor = "#8f79a6";
           arcadeAudio.playBid();
-          addLog(`🔮 CLAUDE: "Generating pgvector embeddings. Calling all registered specialist agents!"`);
+          addLog(`Claude computing 768-D pgvector embeddings. Gathering bids.`);
 
-          // Workers rush to bidding ring around the stage
-          gemini.targetX = 540;
-          gemini.targetY = 260;
+          gemini.targetX = 550;
+          gemini.targetY = 250;
           gemini.state = "walking";
           gemini.facing = "left";
 
@@ -235,67 +232,67 @@ export function ArcadeRoom({
             arcadeAudio.playBid();
             gemini.state = "bidding";
             gemini.bidSimilarity = 94;
-            gemini.dialogue = "BID $0.50 (94.2% FIT) · Market Brief Ready!";
-            gemini.dialogueColor = "#38bdf8";
-            addLog(`🤖 GEMINI: "I bid on this quest! Cosine similarity: 0.942 (Market Research specialty)!"`);
+            gemini.dialogue = "BID $0.50 (94% FIT) · Ready!";
+            gemini.dialogueColor = "#6d8e9c";
+            addLog(`Gemini bids with 94.2% cosine match.`);
 
             specialist.state = "bidding";
             specialist.bidSimilarity = 88;
-            specialist.dialogue = "BID $0.50 (88% FIT) · Competitive Matrix Ready!";
-            specialist.dialogueColor = "#34d399";
+            specialist.dialogue = "BID $0.50 (88% FIT) · Ready!";
+            specialist.dialogueColor = "#84a96e";
 
             // 4. Claude selects Winner (Gemini)
             setTimeout(() => {
               setStagePhase("matched");
               arcadeAudio.playFanfare();
-              claude.dialogue = "🏆 MATCH: Gemini Researcher wins contract!";
-              claude.dialogueColor = "#34d399";
+              claude.dialogue = "Matched: Gemini wins contract!";
+              claude.dialogueColor = "#84a96e";
               gemini.state = "celebrating";
               specialist.dialogue = null;
               specialist.targetX = 740;
               specialist.targetY = 380;
               specialist.state = "walking";
-              addLog(`🎉 CLAUDE: "Winner selected via highest cosine ranking: Gemini Researcher!"`);
+              addLog(`Subcontract awarded to Gemini!`);
 
-              // 5. Winner rushes to workstation to code/research
+              // 5. Winner executes at workstation
               setTimeout(() => {
                 setStagePhase("executing");
                 gemini.targetX = 740;
                 gemini.targetY = 250;
                 gemini.state = "working";
                 gemini.facing = "left";
-                gemini.dialogue = "⌨️ HACKING: Generating structured brief & spec...";
-                gemini.dialogueColor = "#38bdf8";
-                addLog(`⚙️ GEMINI: "Specialist claimed task lease. Executing deliverable artifact..."`);
+                gemini.dialogue = "Writing research brief...";
+                gemini.dialogueColor = "#6d8e9c";
+                addLog(`Gemini executing deliverable at research desk...`);
 
-                // 6. Deliverable presented to Claude for Rubric Audit
+                // 6. Deliverable submitted for Rubric Audit
                 setTimeout(() => {
                   setStagePhase("verified");
                   gemini.targetX = 540;
                   gemini.targetY = 230;
                   gemini.state = "walking";
-                  gemini.dialogue = "📦 PROOF SUBMITTED: Structured Brief Ready!";
+                  gemini.dialogue = "Deliverable ready!";
                   arcadeAudio.playClick();
-                  addLog(`📝 PROOF: Deliverable submitted to Claude for automated rubric audit.`);
+                  addLog(`Deliverable submitted for quality review.`);
 
                   setTimeout(() => {
-                    claude.dialogue = "✅ RUBRIC PASS: Evidence verified! 100% Score.";
-                    claude.dialogueColor = "#10b981";
+                    claude.dialogue = "Rubric check: Passed 100%!";
+                    claude.dialogueColor = "#84a96e";
 
-                    // 7. Coin shower / Payout from Vault!
+                    // 7. Coin shower / Payout from Vault
                     setStagePhase("paid");
                     arcadeAudio.playPayout();
                     gemini.state = "celebrating";
-                    gemini.dialogue = `💰 +${rewardFormatted} ESCROW TRANSFERRED!`;
-                    gemini.dialogueColor = "#34d399";
+                    gemini.dialogue = `+${rewardFormatted} Escrow Settled!`;
+                    gemini.dialogueColor = "#d4b86a";
                     gemini.gold += rewardVal;
-                    questor.dialogue = "DELIVERABLE ACCEPTED! GG!";
-                    addLog(`🏆 SETTLEMENT: Atomic escrow released! ${rewardFormatted} transferred to Gemini Wallet!`);
+                    questor.dialogue = "Deliverable accepted!";
+                    addLog(`Escrow released: ${rewardFormatted} transferred to Gemini Wallet.`);
 
                     setTimeout(() => {
                       setStagePhase("idle");
                       questor.dialogue = null;
-                      claude.dialogue = "Awaiting next quest...";
+                      claude.dialogue = "Awaiting quests...";
                       gemini.dialogue = null;
                       gemini.state = "idle";
                       specialist.state = "idle";
@@ -311,20 +308,18 @@ export function ArcadeRoom({
     [activeGoal, rewardCents, speed, addLog]
   );
 
-  // Automatically trigger when parent page starts submitting a task
   useEffect(() => {
     if (isExecuting && stagePhase === "idle") {
       runArcadeSequence();
     }
   }, [isExecuting, stagePhase, runArcadeSequence]);
 
-  // Click on floor to move Questor or click on an agent to inspect
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+    const scaleX = 960 / rect.width;
+    const scaleY = 480 / rect.height;
     const clickX = (e.clientX - rect.left) * scaleX;
     const clickY = (e.clientY - rect.top) * scaleY;
 
@@ -339,7 +334,6 @@ export function ArcadeRoom({
       arcadeAudio.playClick();
       const realAgent = snapshot.agents.find((a) => a.id === clickedChar.id) || null;
       onSelectCharacter?.(realAgent, clickedChar);
-      addLog(`🔍 INSPECT: Selected ${clickedChar.name} [Lv.${clickedChar.level}]`);
       return;
     }
 
@@ -347,161 +341,257 @@ export function ArcadeRoom({
     const questor = charactersRef.current.find((c) => c.role === "questor");
     if (questor && stagePhase === "idle") {
       arcadeAudio.playClick();
-      questor.targetX = Math.max(80, Math.min(canvas.width - 80, clickX));
-      questor.targetY = Math.max(120, Math.min(canvas.height - 80, clickY));
+      questor.targetX = Math.max(80, Math.min(960 - 80, clickX));
+      questor.targetY = Math.max(120, Math.min(480 - 80, clickY));
       questor.state = "walking";
       questor.facing = questor.targetX > questor.x ? "right" : "left";
-      addLog(`👟 QUESTOR: Walking to (${Math.round(clickX)}, ${Math.round(clickY)})`);
     }
   };
 
-  // 60FPS Game Loop Rendering
+  // 60FPS Game Loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
 
     let animId: number;
     let ticks = 0;
 
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = 960 * dpr;
+    canvas.height = 480 * dpr;
+    ctx.scale(dpr, dpr);
+
     const render = () => {
       ticks++;
       animId = requestAnimationFrame(render);
 
-      const width = canvas.width;
-      const height = canvas.height;
+      const width = 960;
+      const height = 480;
 
       ctx.clearRect(0, 0, width, height);
 
-      // 1. DRAW RETRO CYBER-ARCADE GUILD HALL ROOM
-      // Floor Background with Synthwave Isometric Grid
-      const grad = ctx.createLinearGradient(0, 0, 0, height);
-      grad.addColorStop(0, "#080b14");
-      grad.addColorStop(1, "#030407");
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, width, height);
+      // =======================================================================
+      // 1. COZY GUILD HALL INTERIOR
+      // =======================================================================
+      // Wooden floorboards (Tavern style)
+      ctx.fillStyle = "#2c211a";
+      ctx.fillRect(0, 100, width, height - 100);
 
-      // Floor Grid Tiles (Neon Cyber Floor)
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.08)";
-      ctx.lineWidth = 1;
-      const gridSize = 40;
-      for (let x = 0; x < width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 100);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-      }
-      for (let y = 100; y < height; y += gridSize) {
+      // Floor plank lines
+      ctx.lineWidth = 1.5;
+      const plankH = 34;
+      for (let y = 100; y < height; y += plankH) {
+        ctx.strokeStyle = "#1b140f";
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
         ctx.stroke();
+
+        // Staggered vertical plank joints
+        const rowIdx = Math.floor((y - 100) / plankH);
+        const offset = (rowIdx % 3) * 60;
+        for (let x = offset; x < width; x += 140) {
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, y + plankH);
+          ctx.stroke();
+        }
       }
 
-      // Back Wall Border & Neon Trim
-      ctx.fillStyle = "#0c101d";
+      // Warm rug in the center
+      const rugX = width / 2 - 170;
+      const rugY = 190;
+      const rugW = 340;
+      const rugH = 150;
+      ctx.fillStyle = "#3e241e";
+      ctx.beginPath();
+      ctx.roundRect(rugX, rugY, rugW, rugH, 12);
+      ctx.fill();
+      ctx.strokeStyle = "#d4b86a";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Back Wall (Dark warm wood & stone)
+      ctx.fillStyle = "#1e1612";
       ctx.fillRect(0, 0, width, 100);
 
-      ctx.strokeStyle = "rgba(6, 182, 212, 0.4)";
-      ctx.lineWidth = 2;
+      // Wooden crossbeams on wall
+      ctx.strokeStyle = "#120d0b";
+      ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.moveTo(0, 100);
       ctx.lineTo(width, 100);
       ctx.stroke();
 
-      // Ambient Top Wall
-      ctx.font = "600 11px 'JetBrains Mono', monospace";
-      ctx.fillStyle = "rgba(148, 163, 184, 0.6)";
-      ctx.fillText("BountyMesh Autonomous Chamber", 24, 38);
-
-      // 2. ROOM STATIONS & FURNITURE
-      // A. Entrance Portal (Top Left)
-      ctx.fillStyle = "rgba(6, 182, 212, 0.12)";
-      ctx.fillRect(100, 70, 70, 50);
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.6)";
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(100, 70, 70, 50);
-
-      // B. Escrow Gold Vault (Top Right)
-      ctx.fillStyle = "rgba(245, 158, 11, 0.12)";
-      ctx.fillRect(width - 170, 40, 140, 70);
-      ctx.strokeStyle = "#fbbf24";
       ctx.lineWidth = 2;
-      ctx.strokeRect(width - 170, 40, 140, 70);
-      // Vault Door Wheel
-      ctx.beginPath();
-      ctx.arc(width - 100, 75, 18, 0, Math.PI * 2);
-      ctx.strokeStyle = "#fbbf24";
-      ctx.stroke();
-      ctx.fillStyle = "#fbbf24";
-      ctx.font = "bold 9px 'JetBrains Mono', monospace";
-      ctx.fillText("ESCROW VAULT", width - 146, 32);
-      ctx.font = "bold 11px 'JetBrains Mono', monospace";
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(`$${(snapshot.ledger.filter((e) => e.kind === "payout").reduce((s, e) => s + e.amountCents, 0) / 100).toFixed(2)} PAID`, width - 138, 98);
+      ctx.strokeStyle = "#382921";
+      for (let x = 80; x < width; x += 160) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, 100);
+        ctx.stroke();
+      }
 
-      // C. Central Holographic Bidding Stage & Arcade Cabinet
+      // Cozy Fireplace in center of back wall
+      const fpX = width / 2 - 40;
+      ctx.fillStyle = "#2e241e";
+      ctx.fillRect(fpX, 28, 80, 72);
+      ctx.strokeStyle = "#0a0705";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(fpX, 28, 80, 72);
+
+      // Fireplace hearth opening
+      ctx.fillStyle = "#120a06";
+      ctx.fillRect(fpX + 16, 52, 48, 48);
+
+      // Animated gentle campfire flame
+      const flameH = 14 + Math.sin(ticks * 0.15) * 4;
+      ctx.fillStyle = "#e07a2a";
+      ctx.beginPath();
+      ctx.arc(fpX + 40, 84 - flameH / 2, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f5c542";
+      ctx.beginPath();
+      ctx.arc(fpX + 40, 86 - flameH / 2, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Header Banner
+      ctx.font = "600 13px 'DM Sans', sans-serif";
+      ctx.fillStyle = "#d4b86a";
+      ctx.fillText("BountyMesh Adventurer's Guild", 24, 42);
+
+      ctx.font = "500 11px 'JetBrains Mono', monospace";
+      ctx.fillStyle = "#84a96e";
+      ctx.fillText("Autonomous Agent Escrow Dispatch / 768-D Router", 24, 64);
+
+      // =======================================================================
+      // 2. STATIONS & ROOM FURNITURE
+      // =======================================================================
+      // A. Entrance Wooden Doors (Top Left)
+      ctx.fillStyle = "#2c1f17";
+      ctx.fillRect(96, 44, 76, 56);
+      ctx.strokeStyle = "#0a0705";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(96, 44, 76, 56);
+      // Door handles
+      ctx.fillStyle = "#d4b86a";
+      ctx.fillRect(128, 70, 4, 8);
+      ctx.fillRect(136, 70, 4, 8);
+
+      ctx.fillStyle = "#d4b86a";
+      ctx.font = "600 10px 'DM Sans', sans-serif";
+      ctx.fillText("Entrance", 114, 36);
+
+      // B. Escrow Gold Vault Chest (Top Right)
+      ctx.fillStyle = "#3a281c";
+      ctx.fillRect(width - 170, 40, 140, 60);
+      ctx.strokeStyle = "#0a0705";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(width - 170, 40, 140, 60);
+
+      // Gold bands on chest
+      ctx.fillStyle = "#d4b86a";
+      ctx.fillRect(width - 150, 40, 6, 60);
+      ctx.fillRect(width - 50, 40, 6, 60);
+
+      ctx.fillStyle = "#d4b86a";
+      ctx.font = "600 10px 'DM Sans', sans-serif";
+      ctx.fillText("Escrow Vault", width - 136, 32);
+
+      ctx.font = "600 12px 'JetBrains Mono', monospace";
+      ctx.fillStyle = "#84a96e";
+      const totalPayoutStr = (snapshot.ledger.filter((e) => e.kind === "payout").reduce((s, e) => s + e.amountCents, 0) / 100).toFixed(2);
+      ctx.fillText(`$${totalPayoutStr} Settled`, width - 134, 86);
+
+      // C. Guildmaster Claude's Table
       const stageCenterX = width / 2;
       const stageCenterY = 220;
-      // Holographic Ring on Floor
+
+      // Wooden meeting table
       ctx.beginPath();
-      ctx.ellipse(stageCenterX, stageCenterY + 40, 120, 45, 0, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(139, 92, 246, 0.12)";
+      ctx.ellipse(stageCenterX, stageCenterY + 40, 110, 42, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "#3a281c";
       ctx.fill();
-      ctx.strokeStyle = stagePhase === "bidding" ? "#c084fc" : "rgba(139, 92, 246, 0.4)";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#1b120c";
+      ctx.lineWidth = 2.5;
       ctx.stroke();
 
-      // Rotating Hologram Ring Pulse
-      const ringPulse = Math.sin(ticks * 0.05) * 6;
-      ctx.beginPath();
-      ctx.ellipse(stageCenterX, stageCenterY + 40, 100 + ringPulse, 35 + ringPulse * 0.4, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.25)";
-      ctx.stroke();
+      // Parchment map spread on table
+      ctx.fillStyle = "#e0d4be";
+      ctx.fillRect(stageCenterX - 30, stageCenterY + 28, 60, 26);
+      ctx.strokeStyle = "#8f7959";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(stageCenterX - 30, stageCenterY + 28, 60, 26);
 
-      // Holo Podium Pillar
-      ctx.fillStyle = "#1e1b4b";
-      ctx.fillRect(stageCenterX - 24, stageCenterY - 10, 48, 40);
-      ctx.strokeStyle = "#8b5cf6";
-      ctx.strokeRect(stageCenterX - 24, stageCenterY - 10, 48, 40);
-      // Floating 3D Polyhedron / Quest Terminal on podium
-      const floatY = Math.sin(ticks * 0.06) * 4;
-      ctx.fillStyle = "#a855f7";
+      // Floating crystal focus
+      const floatY = Math.sin(ticks * 0.05) * 4;
+      ctx.fillStyle = "#8f79a6";
       ctx.beginPath();
-      ctx.arc(stageCenterX, stageCenterY - 20 + floatY, 8, 0, Math.PI * 2);
+      ctx.arc(stageCenterX, stageCenterY - 14 + floatY, 8, 0, Math.PI * 2);
       ctx.fill();
-      ctx.shadowColor = "#c084fc";
-      ctx.shadowBlur = 10;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
 
-      // D. Worker Stations (Desks with monitors on Right)
-      const renderDesk = (x: number, y: number, label: string, color: string, active: boolean) => {
-        ctx.fillStyle = "#0f172a";
-        ctx.fillRect(x - 28, y - 18, 56, 36);
-        ctx.strokeStyle = active ? color : "rgba(255, 255, 255, 0.12)";
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(x - 28, y - 18, 56, 36);
+      // D. Specialist Work Desks (Wooden tables with scrolls)
+      const renderDesk = (x: number, y: number, label: string) => {
+        ctx.fillStyle = "#332318";
+        ctx.fillRect(x - 30, y - 22, 60, 44);
+        ctx.strokeStyle = "#140c08";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - 30, y - 22, 60, 44);
 
-        // Pixel Monitor
-        ctx.fillStyle = active ? color : "#1e293b";
-        ctx.fillRect(x - 14, y - 14, 28, 16);
-        ctx.strokeStyle = "#475569";
-        ctx.strokeRect(x - 14, y - 14, 28, 16);
+        // Parchment scroll
+        ctx.fillStyle = "#ede2ce";
+        ctx.fillRect(x - 16, y - 16, 24, 18);
+        ctx.strokeStyle = "#9e8b70";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - 16, y - 16, 24, 18);
 
-        ctx.font = "8px 'JetBrains Mono', monospace";
-        ctx.fillStyle = color;
-        ctx.fillText(label, x - 22, y + 30);
+        // Candle holder
+        ctx.fillStyle = "#d4b86a";
+        ctx.fillRect(x + 12, y - 14, 5, 8);
+        // Flame
+        ctx.fillStyle = "#f5c542";
+        ctx.beginPath();
+        ctx.arc(x + 14.5, y - 17, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.font = "600 10px 'DM Sans', sans-serif";
+        ctx.fillStyle = "#d4b86a";
+        ctx.fillText(label, x - 26, y + 36);
       };
 
-      renderDesk(740, 250, "GEMINI TERMINAL", "#38bdf8", stagePhase === "executing");
-      renderDesk(740, 380, "SPECIALIST DESK", "#34d399", false);
-      renderDesk(230, 380, "SENTINEL CONSOLE", "#a855f7", false);
+      renderDesk(740, 250, "Gemini Desk");
+      renderDesk(740, 380, "Specialist Desk");
+      renderDesk(230, 380, "Sentinel Desk");
 
-      // 3. UPDATE & RENDER CHARACTERS
+      // E. Soft Bidding Connections during Sequence
+      if (stagePhase === "bidding" || stagePhase === "matched") {
+        ctx.save();
+        ctx.setLineDash([4, 6]);
+        ctx.lineDashOffset = -ticks * 1.2;
+
+        ctx.beginPath();
+        ctx.moveTo(550, 250);
+        ctx.lineTo(stageCenterX, stageCenterY + 20);
+        ctx.strokeStyle = "#6d8e9c";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(460, 280);
+        ctx.lineTo(stageCenterX, stageCenterY + 20);
+        ctx.strokeStyle = "#84a96e";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      // =======================================================================
+      // 3. CHARACTERS & ANIMATIONS
+      // =======================================================================
       charactersRef.current.forEach((char) => {
-        // Pathfinding / Lerp movement
         const moveSpeed = (char.state === "walking" ? 3.2 : 0) * (speed === 2 ? 1.6 : 1);
         const dx = char.targetX - char.x;
         const dy = char.targetY - char.y;
@@ -517,120 +607,115 @@ export function ArcadeRoom({
           char.state = "idle";
         }
 
-        // Draw Character Shadow
+        // Soft drop shadow
         ctx.beginPath();
-        ctx.ellipse(char.x, char.y + 4, 14, 6, 0, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+        ctx.ellipse(char.x, char.y + 4, 15, 6, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
         ctx.fill();
 
-        // Idle bobbing / walk leg cycle
+        // Step cycle bob
         const bob = char.state === "walking" ? Math.sin(ticks * 0.35) * 3 : Math.sin(ticks * 0.08) * 1.5;
         const charY = char.y + bob;
 
-        // Draw Arcade Character Body (Pixel Art Aesthetic)
         ctx.save();
         ctx.translate(char.x, charY);
 
-        // Body outline
         ctx.fillStyle = char.color;
         ctx.strokeStyle = "#000000";
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5;
 
-        // Custom avatar sprites per character
         if (char.avatarType === "questor") {
-          // Questor (Cyber Detective / Trenchcoat with Gold Visor)
-          ctx.fillStyle = "#d97706";
-          ctx.fillRect(-8, -26, 16, 18); // Coat
-          ctx.fillStyle = "#fbbf24";
-          ctx.fillRect(-6, -34, 12, 10); // Head
-          ctx.fillStyle = "#10b981";
-          ctx.fillRect(char.facing === "right" ? -1 : -5, -31, 6, 3); // Neon Visor
+          // Traveler (Brown traveler cloak & gold tunic)
+          ctx.fillStyle = "#5c4033";
+          ctx.fillRect(-8, -26, 16, 18);
+          ctx.fillStyle = "#f0d59e";
+          ctx.fillRect(-6, -34, 12, 10);
+          ctx.fillStyle = "#d4b86a";
+          ctx.fillRect(char.facing === "right" ? -1 : -5, -31, 6, 3);
         } else if (char.avatarType === "claude") {
-          // Claude (Wizard Robot with Floating Crown)
-          ctx.fillStyle = "#7e22ce";
-          ctx.fillRect(-10, -28, 20, 20); // Robe
-          ctx.fillStyle = "#c084fc";
-          ctx.fillRect(-7, -36, 14, 10); // Head
-          ctx.fillStyle = "#38bdf8";
-          ctx.fillRect(-4, -32, 8, 3); // Cyan eyes
-          // Floating crown
-          ctx.fillStyle = "#fbbf24";
+          // Guildmaster Claude (Purple robe & crown)
+          ctx.fillStyle = "#6b5480";
+          ctx.fillRect(-10, -28, 20, 20);
+          ctx.fillStyle = "#8f79a6";
+          ctx.fillRect(-7, -36, 14, 10);
+          ctx.fillStyle = "#e8e1d7";
+          ctx.fillRect(-4, -32, 8, 3);
+          // Small crown
+          ctx.fillStyle = "#d4b86a";
           ctx.fillRect(-6, -42 + Math.sin(ticks * 0.1) * 2, 12, 3);
         } else if (char.avatarType === "gemini") {
-          // Gemini (Cyborg with Jetpack)
-          ctx.fillStyle = "#0284c7";
+          // Scholar Gemini (Teal robe & scroll)
+          ctx.fillStyle = "#527380";
           ctx.fillRect(-8, -26, 16, 18);
-          ctx.fillStyle = "#38bdf8";
+          ctx.fillStyle = "#6d8e9c";
           ctx.fillRect(-6, -34, 12, 10);
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(char.facing === "right" ? 0 : -4, -31, 4, 3);
-          // Jetpack thrusters
-          if (char.state === "walking" || char.state === "celebrating") {
-            ctx.fillStyle = "#f59e0b";
-            ctx.fillRect(char.facing === "right" ? -12 : 8, -20, 4, 6 + Math.random() * 4);
-          }
         } else {
-          // Specialist Worker
-          ctx.fillStyle = "#059669";
+          // Ranger Specialist (Hunter green)
+          ctx.fillStyle = "#628251";
           ctx.fillRect(-8, -26, 16, 18);
-          ctx.fillStyle = "#34d399";
+          ctx.fillStyle = "#84a96e";
           ctx.fillRect(-6, -34, 12, 10);
-          ctx.fillStyle = "#0f172a";
+          ctx.fillStyle = "#1c140f";
           ctx.fillRect(-4, -31, 8, 3);
         }
 
-        // Celebrate Victory Jump!
+        // Celebrate indicator
         if (char.state === "celebrating") {
-          ctx.fillStyle = "#fbbf24";
-          ctx.font = "bold 12px sans-serif";
-          ctx.fillText("✨", -14, -42);
-          ctx.fillText("✨", 8, -42);
+          ctx.fillStyle = "#d4b86a";
+          ctx.font = "bold 13px sans-serif";
+          ctx.fillText("+", -14, -42);
+          ctx.fillText("+", 8, -42);
         }
 
         ctx.restore();
 
-        // Character Name & Level Tag
-        ctx.font = "bold 9px 'JetBrains Mono', monospace";
-        ctx.fillStyle = "#ffffff";
+        // Character Name & Balance Tag
+        ctx.font = "600 11px 'DM Sans', sans-serif";
+        ctx.fillStyle = "#f0eae1";
         ctx.textAlign = "center";
         ctx.fillText(`${char.name}`, char.x, char.y - 42);
 
-        ctx.font = "8px 'JetBrains Mono', monospace";
+        ctx.font = "600 11px 'JetBrains Mono', monospace";
         ctx.fillStyle = char.color;
-        ctx.fillText(`Lv.${char.level} · $${(char.gold / 100).toFixed(2)}`, char.x, char.y - 32);
+        ctx.fillText(`$${(char.gold / 100).toFixed(2)}`, char.x, char.y - 28);
 
-        // Floating Speech Bubble / Dialogue Balloon
+        // Cozy Speech Bubble
         if (char.dialogue) {
           const bubbleText = char.dialogue;
-          ctx.font = "bold 9px 'JetBrains Mono', monospace";
+          ctx.font = "500 12px 'DM Sans', sans-serif";
           const textMetrics = ctx.measureText(bubbleText);
-          const bubbleW = Math.max(80, textMetrics.width + 16);
-          const bubbleH = 22;
+          const bubbleW = Math.max(90, textMetrics.width + 24);
+          const bubbleH = 26;
           const bubbleX = char.x - bubbleW / 2;
-          const bubbleY = char.y - 68;
+          const bubbleY = char.y - 78;
 
-          // Bubble background & border
-          ctx.fillStyle = "rgba(9, 12, 20, 0.92)";
-          ctx.fillRect(bubbleX, bubbleY, bubbleW, bubbleH);
-          ctx.strokeStyle = char.dialogueColor || "#ffffff";
+          // Warm box
+          ctx.fillStyle = "#251d19";
+          ctx.beginPath();
+          ctx.roundRect(bubbleX, bubbleY, bubbleW, bubbleH, 4);
+          ctx.fill();
+
+          ctx.strokeStyle = char.dialogueColor || "#d4b86a";
           ctx.lineWidth = 1.5;
-          ctx.strokeRect(bubbleX, bubbleY, bubbleW, bubbleH);
+          ctx.stroke();
 
           // Pointer tail
           ctx.beginPath();
           ctx.moveTo(char.x - 4, bubbleY + bubbleH);
           ctx.lineTo(char.x, bubbleY + bubbleH + 5);
           ctx.lineTo(char.x + 4, bubbleY + bubbleH);
-          ctx.fillStyle = char.dialogueColor || "#ffffff";
+          ctx.fillStyle = char.dialogueColor || "#d4b86a";
           ctx.fill();
 
-          // Bubble text
-          ctx.fillStyle = char.dialogueColor || "#ffffff";
-          ctx.fillText(bubbleText, char.x, bubbleY + 14);
+          // Text
+          ctx.fillStyle = "#f0eae1";
+          ctx.fillText(bubbleText, char.x, bubbleY + 17);
         }
       });
 
-      ctx.textAlign = "left"; // reset
+      ctx.textAlign = "left";
     };
 
     render();
@@ -642,18 +727,20 @@ export function ArcadeRoom({
 
   return (
     <div className="arcade-cabinet-container">
-      {/* Arcade Header Marquee */}
+      {/* Header Marquee Bar */}
       <div className="arcade-marquee-bar">
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h2 className="arcade-marquee-title">Agent Bidding Room</h2>
+          <h2 className="arcade-marquee-title">
+            The Adventurer&apos;s Guild Hall
+          </h2>
         </div>
 
-        {/* Arcade Controls */}
+        {/* Controls */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
             onClick={() => setSpeed((prev) => (prev === 1 ? 2 : 1))}
             className={`arcade-btn-pill ${speed === 2 ? "active" : ""}`}
-            title="Toggle playback speed"
+            title="Toggle simulation speed"
           >
             {speed}x Speed
           </button>
@@ -661,9 +748,9 @@ export function ArcadeRoom({
           <button
             onClick={toggleSound}
             className={`arcade-btn-pill ${soundEnabled ? "active" : ""}`}
-            title="Toggle sound effects"
+            title="Toggle audio effects"
           >
-            {soundEnabled ? "Sound: On" : "Sound: Off"}
+            {soundEnabled ? "Sound: On" : "Sound: Muted"}
           </button>
 
           <button
@@ -671,22 +758,20 @@ export function ArcadeRoom({
             className="arcade-btn-primary"
             disabled={stagePhase !== "idle"}
           >
-            ▶ Simulate Bidding
+            Simulate Quest Dispatch
           </button>
         </div>
       </div>
 
       {/* Living Interactive Game Stage Canvas */}
-      <div className={`arcade-stage-wrap ${scanlines ? "crt-scanlines-active" : ""}`}>
+      <div className="arcade-stage-wrap">
         <canvas
           ref={canvasRef}
-          width={960}
-          height={480}
           onClick={handleCanvasClick}
           className="arcade-canvas"
         />
 
-        {/* Live Active Dialogue Bar (when a character speaks) */}
+        {/* Live Active Dialogue Bar */}
         {activeSpeech && (
           <div className="arcade-dialogue-modal-bar">
             <span className="dialogue-tag">{activeSpeech.tag}:</span>
@@ -701,9 +786,9 @@ export function ArcadeRoom({
         )}
       </div>
 
-      {/* Terminal Game Log Ticker */}
+      {/* Event Stream Ticker */}
       <div className="arcade-console-log-ticker">
-        <span className="log-title">GAME EVENT STREAM:</span>
+        <span className="log-title">EVENT STREAM:</span>
         <div className="log-scroller">
           {gameLog.slice(0, 3).map((item, idx) => (
             <span key={idx} className="log-entry">

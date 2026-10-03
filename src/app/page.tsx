@@ -17,7 +17,6 @@ import {
   Zap,
   Lock,
   Terminal,
-  Activity as ActivityIcon,
   Coins,
   Gamepad2,
   Trophy,
@@ -50,10 +49,10 @@ function isSnapshot(value: unknown): value is Snapshot {
 }
 
 const EXAMPLE_TASKS = [
-  { tag: "RESEARCH", label: "Market Opportunity Brief", text: DEFAULT_GOAL },
-  { tag: "PRICING", label: "Competitive Pricing Matrix", text: "Analyze competitive pricing, fee structures, and escrow hold mechanics across autonomous agent marketplaces." },
-  { tag: "BENCHMARK", label: "Vector Routing Benchmark", text: "Benchmark semantic similarity thresholds and latency for pgvector matching in agent subcontracting pipelines." },
-  { tag: "RUBRIC", label: "Code Quality Rubric", text: "Draft an automated verification checklist and rubric for code artifacts delivered by autonomous specialist agents." },
+  { tag: "Research", label: "Market Opportunity Brief", text: DEFAULT_GOAL },
+  { tag: "Pricing", label: "Competitive Pricing Matrix", text: "Analyze competitive pricing, fee structures, and escrow hold mechanics across autonomous agent marketplaces." },
+  { tag: "Routing", label: "Vector Routing Benchmark", text: "Benchmark semantic similarity thresholds and latency for pgvector matching in agent subcontracting pipelines." },
+  { tag: "Rubric", label: "Code Quality Rubric", text: "Draft an automated verification checklist and rubric for code artifacts delivered by autonomous specialist agents." },
 ];
 
 const BUDGET_PRESETS = [
@@ -174,69 +173,84 @@ export default function Home() {
 
   return (
     <div className="app-viewport">
-      {/* Top Retro Arcade Navigation Header */}
+      {/* RPG Guild Hall Header */}
       <header className="site-header">
         <div className="header-inner">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div className="site-logo">
               <div className="logo-badge">
-                <Gamepad2 size={16} />
+                <Gamepad2 size={18} />
               </div>
               <span className="logo-text">BOUNTY<b>MESH</b></span>
             </div>
 
             <span className={`mode-badge ${snapshot.config.mode === "live" ? "live" : "demo"}`}>
               <span className="status-dot-ping" />
-              {snapshot.config.mode === "live" ? "Live Network" : "Demo Mode"}
+              {snapshot.config.mode === "live" ? "MAINNET" : "DEMO"}
             </span>
           </div>
 
-          {/* Navigation Section Tabs */}
+          {/* RPG Pushbutton Nav */}
           <nav className="nav-links">
             <button
-              onClick={() => setActiveTab("arcade")}
+              onClick={() => {
+                arcadeAudio.playClick();
+                setActiveTab("arcade");
+              }}
               className={`nav-link-item ${activeTab === "arcade" ? "active" : ""}`}
             >
-              <Gamepad2 size={15} />
-              <span>Room</span>
+              <Gamepad2 size={13} />
+              <span>Guild Hall</span>
             </button>
             <button
-              onClick={() => setActiveTab("bounties")}
+              onClick={() => {
+                arcadeAudio.playClick();
+                setActiveTab("bounties");
+              }}
               className={`nav-link-item ${activeTab === "bounties" ? "active" : ""}`}
             >
-              <Trophy size={15} />
-              <span>Bounties</span>
+              <Trophy size={13} />
+              <span>Quests</span>
               {snapshot.bounties.length > 0 && <span className="nav-count-badge">{snapshot.bounties.length}</span>}
             </button>
             <button
-              onClick={() => setActiveTab("agents")}
+              onClick={() => {
+                arcadeAudio.playClick();
+                setActiveTab("agents");
+              }}
               className={`nav-link-item ${activeTab === "agents" ? "active" : ""}`}
             >
-              <Users size={15} />
+              <Users size={13} />
               <span>Agents</span>
               <span className="nav-count-badge">{snapshot.agents.length}</span>
             </button>
             <button
-              onClick={() => setActiveTab("ledger")}
+              onClick={() => {
+                arcadeAudio.playClick();
+                setActiveTab("ledger");
+              }}
               className={`nav-link-item ${activeTab === "ledger" ? "active" : ""}`}
             >
-              <Receipt size={15} />
-              <span>Ledger</span>
+              <Receipt size={13} />
+              <span>Vault</span>
             </button>
           </nav>
 
-          {/* User Credits & Actions */}
+          {/* User Credits & Refresh */}
           <div className="header-actions">
             <div className="wallet-chip">
-              <Coins size={14} style={{ color: "#fbbf24" }} />
-              <span className="wallet-label">Escrow Balance:</span>
+              <Coins size={14} style={{ color: "var(--accent-gold)" }} />
+              <span className="wallet-label">ESCROW:</span>
               <span className="wallet-value">{balance}</span>
             </div>
 
             <button
               className="action-icon-btn"
-              onClick={() => void refresh()}
-              title="Refresh Arcade State"
+              onClick={() => {
+                arcadeAudio.playClick();
+                void refresh();
+              }}
+              title="Refresh Guild State"
             >
               <RefreshCw size={14} className={loading ? "spin-icon" : ""} />
             </button>
@@ -246,10 +260,10 @@ export default function Home() {
 
       {/* Main Content Viewport */}
       <main className="app-main-content">
-        {/* TAB 1: INTERACTIVE ARCADE GUILD HALL (ROOM + BIDDING SHOWDOWN) */}
+        {/* TAB 1: INTERACTIVE GUILD HALL ROOM */}
         {activeTab === "arcade" && (
           <div>
-            {/* The Living Arcade Room Stage */}
+            {/* The Living Guild Hall Stage */}
             <ArcadeRoom
               snapshot={snapshot}
               activeGoal={goal}
@@ -259,20 +273,23 @@ export default function Home() {
               onSelectBounty={(bounty) => setInspectedBounty(bounty)}
             />
 
-            {/* Task Creator Console */}
+            {/* Quest Notice Board Creator */}
             <div className="task-creator-card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Terminal size={17} style={{ color: "var(--accent-emerald-light)" }} />
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: "#ffffff" }}>
-                    Create Autonomous Task
+                  <Terminal size={17} style={{ color: "var(--accent-gold)" }} />
+                  <h3 className="panel-arcade-title">
+                    Guild Notice Board · Post Task
                   </h3>
                 </div>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent-blue)" }}>
+                  pgvector matching · escrow secured
+                </span>
               </div>
 
-              {/* 1-Click Task Templates */}
-              <span style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", display: "block", marginBottom: 8 }}>
-                Popular Examples:
+              {/* 1-Click Task Examples */}
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 10 }}>
+                Popular Directives (1-Click to Load):
               </span>
               <div className="example-chips-row">
                 {EXAMPLE_TASKS.map((ex, i) => (
@@ -286,6 +303,9 @@ export default function Home() {
                     }}
                     disabled={submitting}
                   >
+                    <span style={{ color: "var(--accent-gold)", fontWeight: 700, marginRight: 6 }}>
+                      {ex.tag}
+                    </span>
                     {ex.label}
                   </button>
                 ))}
@@ -297,7 +317,7 @@ export default function Home() {
                   className="task-textarea"
                   value={goal}
                   onChange={(e) => setGoal(e.target.value)}
-                  placeholder="Describe the research brief, market analysis, or code spec you want delivered..."
+                  placeholder="Describe what research, analysis, or code artifact you want delivered by autonomous specialist agents..."
                   disabled={submitting}
                   required
                   minLength={10}
@@ -305,33 +325,33 @@ export default function Home() {
                 />
 
                 {error && (
-                  <div style={{ color: "var(--accent-rose-light)", fontSize: 12, marginTop: 10, display: "flex", alignItems: "center", gap: 8, background: "rgba(244, 63, 94, 0.08)", padding: "10px 14px", borderRadius: "var(--radius-sm)", border: "1px solid rgba(244, 63, 94, 0.2)" }}>
+                  <div style={{ color: "var(--accent-red)", fontSize: 12, marginTop: 10, display: "flex", alignItems: "center", gap: 8, background: "rgba(201, 107, 107, 0.12)", padding: "10px 14px", borderRadius: "var(--radius-xs)", border: "1px solid var(--accent-red)" }}>
                     <ShieldAlert size={15} />
                     <span>{error}</span>
                   </div>
                 )}
 
                 {actionSuccess && (
-                  <div style={{ color: "var(--accent-emerald-light)", fontSize: 12, marginTop: 10, display: "flex", alignItems: "center", gap: 8, background: "rgba(16, 185, 129, 0.08)", padding: "10px 14px", borderRadius: "var(--radius-sm)", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
+                  <div style={{ color: "var(--accent-green-bright)", fontSize: 12, marginTop: 10, display: "flex", alignItems: "center", gap: 8, background: "rgba(132, 169, 110, 0.15)", padding: "10px 14px", borderRadius: "var(--radius-xs)", border: "1px solid var(--accent-green)" }}>
                     <CheckCircle2 size={15} />
-                    <span>Quest successfully subcontracted, verified, and settled in escrow! Review deliverable below.</span>
+                    <span>Task cleared! Verified by Claude and settled in escrow. Review deliverable below.</span>
                   </div>
                 )}
 
-                {/* Reward selector and trigger */}
+                {/* Tactile Push Buttons & Trigger */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18, flexWrap: "wrap", gap: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#94a3b8" }}>
-                      ESCROW BOUNTY:
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--text-muted)" }}>
+                      REWARD:
                     </span>
-                    <div style={{ display: "flex", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 8 }}>
                       {BUDGET_PRESETS.map((p) => (
                         <button
                           key={p.cents}
                           type="button"
-                          className={`arcade-btn-pill ${rewardCents === p.cents ? "active" : ""}`}
+                          className={`arcade-coin-btn ${rewardCents === p.cents ? "active" : ""}`}
                           onClick={() => {
-                            arcadeAudio.playClick();
+                            arcadeAudio.playCoin();
                             setRewardCents(p.cents);
                           }}
                           disabled={submitting}
@@ -353,7 +373,7 @@ export default function Home() {
                         }}
                         disabled={submitting}
                       >
-                        Load Demo Goal
+                        Load Example
                       </button>
                     )}
 
@@ -361,16 +381,15 @@ export default function Home() {
                       type="submit"
                       className="arcade-btn-primary"
                       disabled={submitting || goal.trim().length < 10}
-                      style={{ fontSize: 11, padding: "10px 18px" }}
                     >
                       {submitting ? (
                         <>
-                          <RefreshCw size={14} className="spin-icon" style={{ display: "inline-block", verticalAlign: "middle", marginRight: 6 }} />
-                          AGENTS BIDDING…
+                          <RefreshCw size={13} className="spin-icon" style={{ display: "inline-block", verticalAlign: "middle", marginRight: 6 }} />
+                          Matching Agents…
                         </>
                       ) : (
                         <>
-                          Start Autonomous Task →
+                          Post Quest to Guild →
                         </>
                       )}
                     </button>
@@ -380,15 +399,21 @@ export default function Home() {
             </div>
 
             {/* Recent Completed Quests Preview */}
-            <div className="clean-card" style={{ padding: 20 }}>
+            <div className="clean-card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Trophy size={16} style={{ color: "#fbbf24" }} />
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "#ffffff" }}>
-                    Recent Completed Tasks
+                  <Trophy size={16} style={{ color: "var(--accent-gold)" }} />
+                  <h3 className="panel-arcade-title">
+                    Recently Completed Quests
                   </h3>
                 </div>
-                <button onClick={() => setActiveTab("bounties")} className="arcade-btn-pill">
+                <button
+                  onClick={() => {
+                    arcadeAudio.playClick();
+                    setActiveTab("bounties");
+                  }}
+                  className="arcade-btn-pill"
+                >
                   View All ({snapshot.bounties.length}) →
                 </button>
               </div>
@@ -397,10 +422,10 @@ export default function Home() {
                 <table className="fintech-table">
                   <thead>
                     <tr>
-                      <th>TASK NAME</th>
+                      <th>QUEST OBJECTIVE</th>
                       <th>STATUS</th>
-                      <th>WORKER AGENT</th>
-                      <th style={{ textAlign: "right" }}>BOUNTY</th>
+                      <th>ASSIGNED AGENT</th>
+                      <th style={{ textAlign: "right" }}>REWARD</th>
                       <th style={{ textAlign: "right" }}>ACTION</th>
                     </tr>
                   </thead>
@@ -409,23 +434,26 @@ export default function Home() {
                       <tr
                         key={b.id}
                         className="fintech-row"
-                        onClick={() => setInspectedBounty(b)}
+                        onClick={() => {
+                          arcadeAudio.playClick();
+                          setInspectedBounty(b);
+                        }}
                         style={{ cursor: "pointer" }}
                       >
                         <td>
-                          <b style={{ color: "#ffffff", display: "block", fontSize: 13 }}>{b.title}</b>
-                          <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#64748b" }}>
+                          <b style={{ color: "var(--text-main)", display: "block", fontSize: 13 }}>{b.title}</b>
+                          <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
                             #{b.id.slice(0, 8)}
                           </span>
                         </td>
                         <td>
                           <span className={`status-pill status-${b.status}`}>
-                            {b.status === "paid" ? "Completed & Paid" : b.status}
+                            {b.status === "paid" ? "CLEARED" : b.status}
                           </span>
                         </td>
                         <td>
-                          <span style={{ color: "var(--accent-cyan-light)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                            {snapshot.agents.find((a) => a.id === b.workerId)?.name || "Gemini Researcher"}
+                          <span style={{ color: "var(--accent-blue)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                            {snapshot.agents.find((a) => a.id === b.workerId)?.name || "Scholar"}
                           </span>
                         </td>
                         <td style={{ textAlign: "right" }}>
@@ -434,8 +462,8 @@ export default function Home() {
                           </span>
                         </td>
                         <td style={{ textAlign: "right" }}>
-                          <span style={{ fontSize: 11, color: "var(--accent-emerald-light)", fontWeight: 700, fontFamily: "var(--font-mono)" }}>
-                            Inspect →
+                          <span style={{ fontSize: 11, color: "var(--accent-gold)", fontWeight: 600 }}>
+                            View Deliverable →
                           </span>
                         </td>
                       </tr>
@@ -443,44 +471,44 @@ export default function Home() {
                   </tbody>
                 </table>
               ) : (
-                <div style={{ textAlign: "center", padding: "30px 10px", color: "#64748b", fontFamily: "var(--font-mono)" }}>
-                  No completed quests yet. Post your first bounty or click &ldquo;Simulate Bidding War&rdquo; above!
+                <div style={{ textAlign: "center", padding: "30px 10px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                  No completed quests yet. Post your first bounty or click &ldquo;Post Guild Quest&rdquo; above!
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* TAB 2: QUEST MARKETPLACE & DELIVERABLES */}
+        {/* TAB 2: QUEST BOARD & REPOSITORY */}
         {activeTab === "bounties" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
               <div>
-                <h2 style={{ fontSize: 18, fontWeight: 700, color: "#ffffff", marginBottom: 6 }}>
-                  Bounties & Artifact Repository
+                <h2 className="panel-arcade-title" style={{ fontSize: 16, marginBottom: 6 }}>
+                  Quest Board & Deliverable Archive
                 </h2>
-                <p style={{ color: "#94a3b8", fontSize: 13 }}>
-                  Inspect all deliverables created by autonomous specialist agents with rubric audit proofs.
+                <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                  Inspect specialist research deliverables, automated rubric audits, and cryptographic escrow proofs.
                 </p>
               </div>
 
               {/* Search */}
               <div style={{ position: "relative", minWidth: 260 }}>
-                <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#64748b" }} />
+                <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
                 <input
                   type="text"
-                  placeholder="Filter quests by keyword..."
+                  placeholder="Search quests by keyword or ID..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{
                     width: "100%",
                     background: "var(--bg-input)",
-                    border: "1px solid var(--border-medium)",
-                    borderRadius: "var(--radius-sm)",
+                    border: "2px solid var(--border-outer)",
+                    borderRadius: "var(--radius-xs)",
                     padding: "8px 12px 8px 34px",
                     fontFamily: "var(--font-mono)",
                     fontSize: 12,
-                    color: "#ffffff",
+                    color: "var(--text-main)",
                     outline: "none",
                   }}
                 />
@@ -492,7 +520,7 @@ export default function Home() {
                 <table className="fintech-table">
                   <thead>
                     <tr>
-                      <th style={{ padding: "14px 18px 8px" }}>QUEST & SPECIFICATION</th>
+                      <th style={{ padding: "14px 18px 8px" }}>TASK & OBJECTIVE</th>
                       <th style={{ padding: "14px 18px 8px" }}>ASSIGNED AGENT</th>
                       <th style={{ padding: "14px 18px 8px" }}>ESCROW VAULT</th>
                       <th style={{ padding: "14px 18px 8px" }}>STATUS</th>
@@ -505,28 +533,31 @@ export default function Home() {
                       <tr
                         key={b.id}
                         className="fintech-row"
-                        onClick={() => setInspectedBounty(b)}
+                        onClick={() => {
+                          arcadeAudio.playClick();
+                          setInspectedBounty(b);
+                        }}
                         style={{ cursor: "pointer" }}
                       >
                         <td style={{ padding: "14px 18px" }}>
-                          <b style={{ color: "#ffffff", display: "block", fontSize: 13 }}>{b.title}</b>
-                          <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#64748b" }}>
+                          <b style={{ color: "var(--text-main)", display: "block", fontSize: 13 }}>{b.title}</b>
+                          <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
                             #{b.id.slice(0, 8)} · {new Date(b.createdAt).toLocaleDateString()}
                           </span>
                         </td>
                         <td style={{ padding: "14px 18px" }}>
-                          <span style={{ color: "var(--accent-cyan-light)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                            {snapshot.agents.find((a) => a.id === b.workerId)?.name || "Gemini Researcher"}
+                          <span style={{ color: "var(--accent-blue)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                            {snapshot.agents.find((a) => a.id === b.workerId)?.name || "Scholar"}
                           </span>
                         </td>
                         <td style={{ padding: "14px 18px" }}>
-                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: b.escrowStatus === "settled" ? "var(--accent-emerald-light)" : "#fbbf24", textTransform: "capitalize" }}>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: b.escrowStatus === "settled" ? "var(--accent-green-bright)" : "var(--accent-gold)", textTransform: "capitalize" }}>
                             {b.escrowStatus}
                           </span>
                         </td>
                         <td style={{ padding: "14px 18px" }}>
                           <span className={`status-pill status-${b.status}`}>
-                            {b.status === "paid" ? "Completed & Paid" : b.status}
+                            {b.status === "paid" ? "CLEARED" : b.status}
                           </span>
                         </td>
                         <td style={{ padding: "14px 18px", textAlign: "right" }}>
@@ -535,8 +566,8 @@ export default function Home() {
                           </span>
                         </td>
                         <td style={{ padding: "14px 18px", textAlign: "right" }}>
-                          <span style={{ fontSize: 11, color: "var(--accent-emerald-light)", fontWeight: 700, fontFamily: "var(--font-mono)" }}>
-                            Inspect Artifact →
+                          <span style={{ fontSize: 11, color: "var(--accent-gold)", fontWeight: 600 }}>
+                            View Artifact →
                           </span>
                         </td>
                       </tr>
@@ -544,88 +575,101 @@ export default function Home() {
                   </tbody>
                 </table>
               ) : (
-                <div style={{ textAlign: "center", padding: "50px 20px", color: "#64748b", fontFamily: "var(--font-mono)" }}>
-                  No quests recorded yet. Post a task in the Arcade Hall to start!
+                <div style={{ textAlign: "center", padding: "50px 20px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                  No quests found. Post a task in the Guild Hall to see autonomous execution!
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* TAB 3: AGENTS ROSTER */}
+        {/* TAB 3: AGENTS GUILD ROSTER */}
         {activeTab === "agents" && (
           <div>
             <div style={{ marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#ffffff", marginBottom: 6 }}>
-                Registered Agent Workforce
+              <h2 className="panel-arcade-title" style={{ fontSize: 16, marginBottom: 6 }}>
+                Adventurer&apos;s Guild Workforce
               </h2>
-              <p style={{ color: "#94a3b8", fontSize: 13 }}>
-                Autonomous specialist agents connected to the BountyMesh pgvector matching engine.
+              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                Autonomous specialist agents registered with 768-dimensional pgvector capability embeddings.
               </p>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
-              {snapshot.agents.map((agent) => (
-                <div
-                  key={agent.id}
-                  className="clean-card"
-                  onClick={() => setInspectedAgent({ agent })}
-                  style={{ cursor: "pointer", transition: "transform 0.15s ease", border: "1px solid var(--border-medium)" }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                    <div>
-                      <h3 style={{ fontSize: 15, fontWeight: 700, color: "#ffffff" }}>{agent.name}</h3>
-                      <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--accent-cyan-light)" }}>
-                        {agent.model}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 16 }}>
+              {snapshot.agents.map((agent) => {
+                const isOrchestrator = agent.role === "orchestrator";
+                const roleBadgeColor = isOrchestrator ? "var(--accent-purple)" : "var(--accent-blue)";
+
+                return (
+                  <div
+                    key={agent.id}
+                    className="fighter-card"
+                    onClick={() => {
+                      arcadeAudio.playClick();
+                      setInspectedAgent({ agent });
+                    }}
+                  >
+                    <div className="fighter-portrait-strip">
+                      <div>
+                        <h3 className="fighter-name">{agent.name}</h3>
+                        <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block", marginTop: 4 }}>
+                          {agent.model}
+                        </span>
+                      </div>
+                      <span className="rpg-badge" style={{ background: roleBadgeColor, color: "#1a1411" }}>
+                        {isOrchestrator ? "ORCHESTRATOR" : "SPECIALIST"}
                       </span>
                     </div>
-                    <span className="rpg-badge" style={{ background: agent.role === "orchestrator" ? "#a855f7" : "#06b6d4", color: "#000" }}>
-                      {agent.role.toUpperCase()}
-                    </span>
-                  </div>
 
-                  <div style={{ background: "rgba(0,0,0,0.4)", padding: "10px 12px", borderRadius: 6, display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-                    <div>
-                      <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "#64748b", display: "block" }}>GOLD EARNED</span>
-                      <b style={{ fontFamily: "var(--font-mono)", color: "var(--accent-emerald-light)" }}>
-                        ${(agent.earnedCents / 100).toFixed(2)}
-                      </b>
+                    <div className="fighter-stat-meter">
+                      <div>
+                        <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block" }}>TOTAL EARNED</span>
+                        <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--accent-gold)" }}>
+                          ${(agent.earnedCents / 100).toFixed(2)}
+                        </b>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block" }}>TASKS DELIVERED</span>
+                        <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--accent-green-bright)" }}>
+                          {agent.tasksCompleted}
+                        </b>
+                      </div>
                     </div>
-                    <div>
-                      <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "#64748b", display: "block" }}>QUESTS WON</span>
-                      <b style={{ fontFamily: "var(--font-mono)", color: "#ffffff" }}>
-                        {agent.tasksCompleted}
-                      </b>
-                    </div>
-                  </div>
 
-                  <div>
-                    <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "#64748b", display: "block", marginBottom: 6 }}>
-                      VERIFIED SKILLS:
-                    </span>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                      {agent.skills.map((s, idx) => (
-                        <span key={idx} className="rpg-skill-chip" style={{ fontSize: 10 }}>
-                          {s}
-                        </span>
-                      ))}
+                    <div>
+                      <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
+                        VERIFIED SPECIALTIES:
+                      </span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {agent.skills.map((s, idx) => (
+                          <span key={idx} className="rpg-skill-chip">
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--border-inner)", display: "flex", justifyContent: "flex-end" }}>
+                      <span style={{ fontSize: 11, color: "var(--accent-gold)", fontWeight: 600 }}>
+                        View Agent Stats →
+                      </span>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
 
-        {/* TAB 4: ESCROW VAULT LEDGER */}
+        {/* TAB 4: ESCROW VAULT & SETTLEMENT LOG */}
         {activeTab === "ledger" && (
           <div>
             <div style={{ marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#ffffff", marginBottom: 6 }}>
+              <h2 className="panel-arcade-title" style={{ fontSize: 16, marginBottom: 6 }}>
                 Escrow Settlement Ledger
               </h2>
-              <p style={{ color: "#94a3b8", fontSize: 13 }}>
-                Cryptographic transaction log of all micro-escrow locks, payout transfers, and refunds.
+              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                Cryptographic transaction log of all micro-escrow deposits, worker settlement transfers, and refunds.
               </p>
             </div>
 
@@ -635,7 +679,7 @@ export default function Home() {
                   <thead>
                     <tr>
                       <th style={{ padding: "14px 18px 8px" }}>EVENT KIND</th>
-                      <th style={{ padding: "14px 18px 8px" }}>QUEST REFERENCE</th>
+                      <th style={{ padding: "14px 18px 8px" }}>TASK REFERENCE</th>
                       <th style={{ padding: "14px 18px 8px" }}>SETTLEMENT RAIL</th>
                       <th style={{ padding: "14px 18px 8px" }}>TIMESTAMP</th>
                       <th style={{ padding: "14px 18px 8px", textAlign: "right" }}>AMOUNT</th>
@@ -645,28 +689,28 @@ export default function Home() {
                     {snapshot.ledger.map((entry) => (
                       <tr key={entry.id} className="fintech-row" style={{ cursor: "default" }}>
                         <td style={{ padding: "14px 18px" }}>
-                          <b style={{ color: entry.kind === "payout" ? "var(--accent-emerald-light)" : "#fbbf24", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                            {entry.kind === "payout" ? "★ PAYOUT RELEASED" : "🔒 ESCROW HOLD"}
+                          <b style={{ color: entry.kind === "payout" ? "var(--accent-green-bright)" : "var(--accent-gold)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                            {entry.kind === "payout" ? "Payout Released" : "Escrow Locked"}
                           </b>
-                          <span style={{ display: "block", fontSize: 10, color: "#64748b", fontFamily: "var(--font-mono)" }}>
+                          <span style={{ display: "block", fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginTop: 2 }}>
                             tx_{entry.id.slice(0, 8)}
                           </span>
                         </td>
                         <td style={{ padding: "14px 18px" }}>
-                          <span style={{ color: "var(--accent-cyan-light)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                          <span style={{ color: "var(--accent-blue)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
                             #{entry.bountyId.slice(0, 8)}
                           </span>
                         </td>
                         <td style={{ padding: "14px 18px" }}>
-                          <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", background: "rgba(255,255,255,0.05)", padding: "2px 8px", borderRadius: 4 }}>
+                          <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", background: "var(--bg-input)", border: "1px solid var(--border-inner)", padding: "2px 8px", borderRadius: 3 }}>
                             {entry.provider.toUpperCase()}
                           </span>
                         </td>
-                        <td style={{ padding: "14px 18px", color: "#64748b", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+                        <td style={{ padding: "14px 18px", color: "var(--text-muted)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
                           {new Date(entry.createdAt).toLocaleTimeString()}
                         </td>
                         <td style={{ padding: "14px 18px", textAlign: "right" }}>
-                          <span className="mono-amount" style={{ color: entry.kind === "payout" ? "var(--accent-emerald-light)" : "#ffffff" }}>
+                          <span className="mono-amount" style={{ color: entry.kind === "payout" ? "var(--accent-green-bright)" : "var(--text-main)", fontSize: 15 }}>
                             {entry.kind === "refund" ? "+" : "−"}${(entry.amountCents / 100).toFixed(2)}
                           </span>
                         </td>
@@ -675,8 +719,8 @@ export default function Home() {
                   </tbody>
                 </table>
               ) : (
-                <div style={{ textAlign: "center", padding: "50px 20px", color: "#64748b", fontFamily: "var(--font-mono)" }}>
-                  No escrow transactions logged yet. Post a quest to create the first deposit!
+                <div style={{ textAlign: "center", padding: "50px 20px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                  No transactions recorded yet. Post a task in the Guild Hall to create the first deposit!
                 </div>
               )}
             </div>
@@ -684,7 +728,7 @@ export default function Home() {
         )}
       </main>
 
-      {/* RPG Agent Dossier Modal */}
+      {/* RPG Agent Character Select Modal */}
       {inspectedAgent && (
         <ArcadeCharacterModal
           agent={inspectedAgent.agent}
@@ -697,7 +741,7 @@ export default function Home() {
         />
       )}
 
-      {/* Deliverable Terminal Inspector Modal */}
+      {/* Deliverable Debrief Terminal Modal */}
       {inspectedBounty && (
         <ArcadeDeliverableModal
           bounty={inspectedBounty}
@@ -705,22 +749,22 @@ export default function Home() {
         />
       )}
 
-      {/* Retro Arcade Footer */}
+      {/* Retro Guild Hall Footer */}
       <footer className="site-footer">
         <div className="footer-inner">
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontWeight: 700, fontSize: 13, color: "var(--accent-emerald-light)" }}>
-              BountyMesh
+            <span style={{ color: "var(--accent-gold)", fontWeight: 700 }}>
+              BountyMesh · The Adventurer&apos;s Guild
             </span>
-            <span style={{ color: "#334155" }}>·</span>
+            <span style={{ color: "var(--border-inner)" }}>·</span>
             <span>Autonomous AI Agent Micro-Work & Escrow Settlement</span>
           </div>
 
-          <div style={{ display: "flex", gap: 16, fontFamily: "var(--font-mono)", fontSize: 11 }}>
-            <button onClick={() => setActiveTab("arcade")} style={{ color: "#94a3b8", cursor: "pointer" }}>Room</button>
-            <button onClick={() => setActiveTab("bounties")} style={{ color: "#94a3b8", cursor: "pointer" }}>Bounties</button>
-            <button onClick={() => setActiveTab("agents")} style={{ color: "#94a3b8", cursor: "pointer" }}>Agents</button>
-            <button onClick={() => setActiveTab("ledger")} style={{ color: "#94a3b8", cursor: "pointer" }}>Vault</button>
+          <div style={{ display: "flex", gap: 16 }}>
+            <button onClick={() => setActiveTab("arcade")} style={{ color: "var(--text-muted)", cursor: "pointer" }}>Guild Hall</button>
+            <button onClick={() => setActiveTab("bounties")} style={{ color: "var(--text-muted)", cursor: "pointer" }}>Quests</button>
+            <button onClick={() => setActiveTab("agents")} style={{ color: "var(--text-muted)", cursor: "pointer" }}>Agents</button>
+            <button onClick={() => setActiveTab("ledger")} style={{ color: "var(--text-muted)", cursor: "pointer" }}>Vault</button>
           </div>
         </div>
       </footer>

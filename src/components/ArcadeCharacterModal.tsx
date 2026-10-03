@@ -19,26 +19,26 @@ export function ArcadeCharacterModal({
 }: ArcadeCharacterModalProps) {
   if (!agent && !customChar) return null;
 
-  const name = customChar?.name || agent?.name || "Arcade Agent";
+  const name = customChar?.name || agent?.name || "Guild Agent";
   const role = customChar?.role || agent?.role || "worker";
   const model = customChar?.model || agent?.model || "Autonomous Model";
   const gold = customChar ? customChar.gold : agent ? agent.balanceCents : 0;
   const level = customChar?.level || (agent ? Math.max(1, agent.tasksCompleted * 5 + 10) : 1);
   const skills = customChar?.skills || agent?.skills || [];
-  const color = customChar?.color || (role === "orchestrator" ? "#a855f7" : "#06b6d4");
+  const color = customChar?.color || (role === "orchestrator" ? "var(--accent-purple)" : "var(--accent-blue)");
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="arcade-rpg-dialog">
         {/* Pixel Header Bar */}
         <div className="rpg-dialog-header">
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="rpg-badge" style={{ background: color, color: "#000" }}>
-              {role.toUpperCase()}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span className="rpg-badge" style={{ background: color, color: "#000000" }}>
+              LV.{level}
             </span>
             <div>
               <h2 className="rpg-name">{name}</h2>
-              <span className="rpg-subtext">{model}</span>
+              <span className="rpg-subtext">{model} · {role.toUpperCase()}</span>
             </div>
           </div>
 
@@ -50,22 +50,22 @@ export function ArcadeCharacterModal({
         {/* RPG Stat Grid */}
         <div className="rpg-stats-grid">
           <div className="rpg-stat-box">
-            <span className="rpg-stat-label">BALANCE EARNED</span>
-            <b className="rpg-stat-val" style={{ color: "#fbbf24" }}>
-              ${(gold / 100).toFixed(2)} USD
+            <span className="rpg-stat-label">VAULT BALANCE</span>
+            <b className="rpg-stat-val" style={{ color: "var(--accent-gold)" }}>
+              ${(gold / 100).toFixed(2)}
             </b>
           </div>
 
           <div className="rpg-stat-box">
-            <span className="rpg-stat-label">TASKS COMPLETED</span>
-            <b className="rpg-stat-val" style={{ color: "#34d399" }}>
+            <span className="rpg-stat-label">TASKS DELIVERED</span>
+            <b className="rpg-stat-val" style={{ color: "var(--accent-green-bright)" }}>
               {agent ? agent.tasksCompleted : 0} DELIVERED
             </b>
           </div>
 
           <div className="rpg-stat-box">
-            <span className="rpg-stat-label">MATCHING ENGINE</span>
-            <b className="rpg-stat-val" style={{ color: "#38bdf8" }}>
+            <span className="rpg-stat-label">CAPABILITY INDEX</span>
+            <b className="rpg-stat-val" style={{ color: "var(--accent-blue)" }}>
               pgvector 768-D
             </b>
           </div>
@@ -73,7 +73,7 @@ export function ArcadeCharacterModal({
 
         {/* RPG Skill Inventory */}
         <div style={{ marginTop: 16 }}>
-          <span className="rpg-section-title">VERIFIED SKILLS</span>
+          <span className="rpg-section-title">VERIFIED SPECIALTIES</span>
           <div className="rpg-skills-wrap">
             {skills.map((skill, idx) => (
               <span key={idx} className="rpg-skill-chip">
@@ -85,11 +85,11 @@ export function ArcadeCharacterModal({
 
         {/* Character Lore / Background */}
         <div style={{ marginTop: 16 }}>
-          <span className="rpg-section-title">AGENT ARCHITECTURE</span>
+          <span className="rpg-section-title">AGENT CAPABILITY DOSSIER</span>
           <p className="rpg-lore-text">
             {role === "orchestrator"
-              ? "The orchestrator of BountyMesh. Claude 3.5 Sonnet processes incoming task objectives, computes normalized semantic vector embeddings, executes cosine matching to select specialist workers, holds escrow securely, and validates deliverable rubrics before authorizing atomic payout."
-              : `A specialist autonomous agent registered on the BountyMesh network. Runs on ${model}, ready to claim sub-bounties and deliver structured research artifacts, visualization specifications, or code components.`}
+              ? "Executive orchestrator of BountyMesh. Claude 3.5 Sonnet processes incoming task objectives, computes normalized semantic vector embeddings, executes cosine matching to select specialist workers, holds escrow securely, and validates deliverable rubrics before authorizing atomic payout."
+              : `Specialist autonomous agent registered in the Guild Hall. Runs on ${model}, ready to claim sub-bounties and deliver structured research artifacts, visualization specifications, or code components.`}
           </p>
         </div>
 
@@ -106,7 +106,7 @@ export function ArcadeCharacterModal({
             }}
             className="arcade-btn-primary"
           >
-            Assign Task to Agent <ArrowRight size={14} />
+            Assign Task to Agent →
           </button>
         </div>
       </div>
