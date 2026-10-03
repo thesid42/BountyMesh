@@ -79,7 +79,7 @@ async function gemini(prompt: string, json = true): Promise<string> {
   return text;
 }
 export async function produceDeliverable(goal: string, task: string): Promise<Deliverable> {
-  const parsed = extractJson(await gemini(`Complete this research and data-visualization specification task using your existing knowledge. Do not execute code or claim to have browsed sources. Be explicit about assumptions and uncertainty. Return JSON with summary (one sentence, 12–280 characters), content (80–6000 characters; a concise Markdown report with a visualization specification), and kind exactly "markdown".\nUser goal: ${goal}\nAssigned task: ${task}`)) as Record<string, unknown>;
+  const parsed = extractJson(await gemini(`Complete the assigned task using your existing knowledge. Follow the user's scope and requested format; include a visualization specification only when requested. Do not execute code or claim to have browsed sources. Be explicit about assumptions and uncertainty, and never present invented facts or statistics as evidence. Return JSON with summary (one sentence, 12–280 characters), content (80–6000 characters; a concise Markdown report), and kind exactly "markdown".\nUser goal: ${goal}\nAssigned task: ${task}`)) as Record<string, unknown>;
   const summary = bounded(parsed.summary, 12, 280, "deliverable summary");
   const content = bounded(parsed.content, 80, 6000, "deliverable content");
   if (parsed.kind !== "markdown") throw new Error("Gemini provider returned an unsupported deliverable format");

@@ -32,6 +32,7 @@ interface ArcadeRoomProps {
   onSelectCharacter?: (agent: Agent | null, customChar?: ArcadeCharacter) => void;
   onSelectBounty?: (bounty: Bounty) => void;
   onFillGoal?: (goal: string) => void;
+  onSelectRun?: (runId: string) => void;
   onSwitchTab?: (tab: "arcade" | "bounties" | "agents" | "ledger") => void;
 }
 
@@ -566,6 +567,7 @@ export function ArcadeRoom({
   onSelectCharacter,
   onSelectBounty,
   onFillGoal,
+  onSelectRun,
   onSwitchTab,
 }: ArcadeRoomProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -707,6 +709,17 @@ export function ArcadeRoom({
 
   // Sync snapshot agent gold/stats with game state
   useEffect(() => {
+    const external = snapshot.agents.filter(a => a.origin === "external" && a.registrationState === "active");
+    const selectedWorkerId = snapshot.bounties.find(b => b.runId === activeRunId)?.workerId;
+    const displayed = [...external].sort((a, b) => Number(b.id === selectedWorkerId) - Number(a.id === selectedWorkerId)).slice(0, 3);
+    const ids = new Set(displayed.map(a => a.id));
+    charactersRef.current = charactersRef.current.filter(c => !c.accountRegistered || ids.has(c.id));
+    for (const [index, agent] of displayed.entries()) {
+      if (!charactersRef.current.some(c => c.id === agent.id)) {
+        const x = 360 + index * 110, y = 440;
+        charactersRef.current.push({ id: agent.id, name: agent.name, role: "worker", model: agent.model, color: "#84a96e", x, y, targetX: x, targetY: y, facing: "down", state: "idle", dialogue: null, avatarType: "specialist", level: 1, gold: agent.balanceCents, skills: agent.skills, accountRegistered: true });
+      }
+    }
     snapshot.agents.forEach((snapAgent) => {
       const char = charactersRef.current.find((c) => c.id === snapAgent.id);
       if (char) {
@@ -718,7 +731,7 @@ export function ArcadeRoom({
         char.level = Math.max(1, snapAgent.tasksCompleted * 5 + 10);
       }
     });
-  }, [snapshot.agents]);
+  }, [snapshot.agents, snapshot.bounties, activeRunId]);
 
   const toggleSound = () => {
     const next = !soundEnabled;
@@ -1681,6 +1694,8 @@ export function ArcadeRoom({
       {/* Interactive Notice Board Modal */}
       {showNoticeBoardModal && (
         <GuildNoticeBoardModal
+          authHeaders={authHeaders}
+          onRun={(id) => { setShowNoticeBoardModal(false); onSelectRun?.(id); }}
           bounties={snapshot.bounties}
           onClose={() => setShowNoticeBoardModal(false)}
           onSelectBounty={(b) => {

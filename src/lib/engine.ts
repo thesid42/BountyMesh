@@ -5,6 +5,7 @@ import { HttpError } from "./http";
 import { DEFAULT_REWARD_CENTS, ORCHESTRATOR_ID, type Bounty, type Run, type RunInput, type Snapshot } from "./contracts";
 import { acquireRunLease, addActivity, claimBounty, createBounty, createRun, getBountyByRunId, getSnapshot, matchAgents, recordHold, releaseBounty, releaseRunLease, settleBounty, transitionBounty, updateRun } from "./repository";
 import { embedText, planBounty, produceDeliverable, reviewDeliverable } from "./providers/models";
+import { executeRegisteredWorker } from "./agent-registry";
 
 const active = new Map<string, { goal: string; rewardCents: number; promise: Promise<Run> }>();
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -55,7 +56,7 @@ async function settleStripe(bounty: Bounty): Promise<{ reference: string; transf
   if (pi.status !== "succeeded") throw new Error(`Escrow capture is not complete (status ${pi.status})`);
   const charge = typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id;
   if (!charge) throw new Error("Captured payment has no charge to fund the transfer");
-  const transfer = await stripe.transfers.create({ amount: bounty.rewardCents, currency: "usd", destination: getEnv("STRIPE_CONNECTED_ACCOUNT_ID"), source_transaction: charge, description: `BountyMesh payout ${bounty.id}`, metadata: { bountyId: bounty.id, runId: bounty.runId, workerId: bounty.workerId } }, { idempotencyKey: stableKey("bm_transfer", bounty.id) });
+  const transfer = await stripe.transfers.create({ amount: bounty.rewardCents, currency: "usd", destination: bounty.payoutDestination || getEnv("STRIPE_CONNECTED_ACCOUNT_ID"), source_transaction: charge, description: `BountyMesh payout ${bounty.id}`, metadata: { bountyId: bounty.id, runId: bounty.runId, workerId: bounty.workerId } }, { idempotencyKey: stableKey("bm_transfer", bounty.id) });
   return { reference: pi.id, transferId: transfer.id };
 }
 async function cancelHold(bounty: Bounty): Promise<void> {
@@ -76,9 +77,12 @@ async function progress(run: Run, bounty: Bounty, goal: string, shouldFail = fal
   if (b.status === "open") {
     const vec = getConfig().mode === "live" ? await embedText(`${b.title}\n${b.description}`) : [0.45, 0.22, 0.38, 0.16, 0.51, 0.2, 0.37, 0.31];
     await log(run.id, b.id, "matching", "Matching the bounty to workers by skill fit.");
-    const matches = await matchAgents(vec, 3); if (!matches.length) throw new Error("No eligible worker agents are available");
-    const selected = matches[0];
-    b = await claimBounty(b.id, selected.agent.id, selected.similarity) ?? b;
+    const matches = await matchAgents(vec, 10); if (!matches.length) throw new Error("No eligible worker agents are available");
+    let selected = matches[0];
+    for (const candidate of matches) {
+      const claimed = await claimBounty(b.id, candidate.agent.id, candidate.similarity);
+      if (claimed) { b = claimed; selected = candidate; break; }
+    }
     if (b.status !== "claimed") throw new Error("The bounty was claimed by another worker");
     await log(run.id, b.id, "claim", `${selected.agent.name} claimed the task with ${Math.round(selected.similarity * 100)}% skill similarity.`, selected.agent.id);
   }
@@ -92,7 +96,7 @@ async function progress(run: Run, bounty: Bounty, goal: string, shouldFail = fal
               content: `## Cryptographic Proof & Financial Benchmark Audit\n\n- Signature Proof: FAILED (Truncated hash block: 0x8f2a...invalid)\n- Cosine Alignment: 38% (Under required threshold: 85%)\n- Benchmark Tables: Hallucinated data detected in columns B-D.\n\n## Verification Note\n\nArtifact fails automated verification rubric criteria 2, 4, and 5. Escrow release denied.`,
             }
           : { summary: `A focused brief and visualization plan for: ${goal.slice(0, 100)}`, kind: "markdown" as const, content: `## Research brief\n\nThis demo assignment turns the requested goal into a compact research brief. It identifies the decision to support, the audience, and the evidence that should be gathered before publication.\n\n## Visualization specification\n\n- **Chart:** horizontal ranked bar chart, with one bar per opportunity.\n- **Measures:** estimated market demand, execution effort, and confidence; show confidence in a separate column.\n- **Encoding:** sort by demand-to-effort ratio and use a restrained accent color for the top three.\n- **Caveat:** populate values from cited, current sources before using this as a factual market estimate.\n\n## Suggested next step\n\nCollect comparable evidence for each opportunity, record source dates, then replace the illustrative ranking with measured values.` })
-      : await produceDeliverable(goal, b.description);
+      : (await executeRegisteredWorker(b, goal)) ?? await produceDeliverable(goal, b.description);
     b = await transitionBounty(b.id, "claimed", "delivered", { deliverable });
     await log(run.id, b.id, "delivery", "Worker submitted a text deliverable and visualization specification.", b.workerId);
   }

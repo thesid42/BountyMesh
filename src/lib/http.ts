@@ -15,7 +15,7 @@ function requestOrigin(request: Request): string {
   const protocol = request.headers.get("x-forwarded-proto")?.split(",")[0].trim() ?? targetUrl.protocol.slice(0, -1);
   return new URL(`${protocol}://${host}`).origin;
 }
-function sameOrigin(request: Request): boolean {
+export function sameOrigin(request: Request): boolean {
   if (request.headers.get("sec-fetch-site") === "cross-site") return false;
   const origin = request.headers.get("origin");
   if (origin) {
@@ -78,6 +78,26 @@ export function authorize(request: Request, mutation = false): void {
   const cfg = getConfig(); const protectedRequest = cfg.mode === "live" || process.env.NODE_ENV === "production";
   if (protectedRequest && !bearer(request) && !session(request)) throw new HttpError(401, "Operator authorization required");
   if (mutation && !sameOrigin(request)) throw new HttpError(403, "Cross-origin request rejected");
+}
+export function requireSameOrigin(request: Request): void {
+  if (!sameOrigin(request)) throw new HttpError(403, "Cross-origin request rejected");
+}
+export async function readJsonBody(request: Request, limit = 16_384): Promise<Record<string, unknown>> {
+  if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") throw new HttpError(415, "Send a JSON request body");
+  if (Number(request.headers.get("content-length") ?? 0) > limit) throw new HttpError(413, "Request body is too large");
+  if (!request.body) throw new HttpError(400, "Request body is required");
+  const reader = request.body.getReader(); const chunks: Uint8Array[] = []; let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break;
+      total += value.byteLength;
+      if (total > limit) { await reader.cancel(); throw new HttpError(413, "Request body is too large"); }
+      chunks.push(value);
+    }
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("object required");
+    return parsed as Record<string, unknown>;
+  } catch (error) { if (error instanceof HttpError) throw error; throw new HttpError(400, "Invalid JSON request body"); }
 }
 export async function readRunInput(request: Request): Promise<RunInput> {
   const type = request.headers.get("content-type")?.split(";")[0].trim().toLowerCase();

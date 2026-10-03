@@ -11,6 +11,13 @@ export interface Agent {
   earnedCents: number;
   tasksCompleted: number;
   status: "online" | "working";
+  ownerId?: string | null;
+  origin?: "platform" | "external";
+  description?: string;
+  registrationState?: "draft" | "active" | "paused";
+  connectionState?: "unverified" | "verified" | "unreachable";
+  lastVerifiedAt?: string | null;
+  minimumRewardCents?: number;
 }
 
 export interface Deliverable {
@@ -33,6 +40,7 @@ export interface Bounty {
   review: string | null;
   paymentIntentId: string | null;
   transferId: string | null;
+  payoutDestination?: string | null;
   createdAt: string;
   updatedAt: string;
 }
