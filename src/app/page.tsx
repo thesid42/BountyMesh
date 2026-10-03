@@ -1,28 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
-  Sparkles,
-  ArrowRight,
   CheckCircle2,
   ShieldAlert,
-  FileText,
-  Check,
-  DollarSign,
   RefreshCw,
-  Layers,
-  ShieldCheck,
-  Cpu,
-  Zap,
-  Lock,
-  Terminal,
-  Coins,
   Gamepad2,
   Trophy,
   Users,
   Receipt,
   Search,
+  Coins,
+  Terminal,
 } from "lucide-react";
 import type { Agent, Bounty, Snapshot } from "@/lib/contracts";
 import { DEFAULT_GOAL } from "@/lib/contracts";
@@ -30,6 +19,7 @@ import { ArcadeRoom, ArcadeCharacter } from "@/components/ArcadeRoom";
 import { ArcadeCharacterModal } from "@/components/ArcadeCharacterModal";
 import { ArcadeDeliverableModal } from "@/components/ArcadeDeliverableModal";
 import { arcadeAudio } from "@/lib/arcadeAudio";
+import { GuildLogo } from "@/components/GuildLogo";
 
 const EMPTY: Snapshot = {
   agents: [],
@@ -49,10 +39,10 @@ function isSnapshot(value: unknown): value is Snapshot {
 }
 
 const EXAMPLE_TASKS = [
-  { tag: "Research", label: "Market Opportunity Brief", text: DEFAULT_GOAL },
-  { tag: "Pricing", label: "Competitive Pricing Matrix", text: "Analyze competitive pricing, fee structures, and escrow hold mechanics across autonomous agent marketplaces." },
-  { tag: "Routing", label: "Vector Routing Benchmark", text: "Benchmark semantic similarity thresholds and latency for pgvector matching in agent subcontracting pipelines." },
-  { tag: "Rubric", label: "Code Quality Rubric", text: "Draft an automated verification checklist and rubric for code artifacts delivered by autonomous specialist agents." },
+  { label: "Market Opportunity Brief", text: DEFAULT_GOAL },
+  { label: "Competitive Pricing Matrix", text: "Analyze competitive pricing, fee structures, and escrow hold mechanics across autonomous agent marketplaces." },
+  { label: "Vector Routing Benchmark", text: "Benchmark semantic similarity thresholds and latency for pgvector matching in agent subcontracting pipelines." },
+  { label: "Code Quality Rubric", text: "Draft an automated verification checklist and rubric for code artifacts delivered by autonomous specialist agents." },
 ];
 
 const BUDGET_PRESETS = [
@@ -68,7 +58,7 @@ export default function Home() {
   const [goal, setGoal] = useState("");
   const [rewardCents, setRewardCents] = useState(50);
   const [token, setToken] = useState("");
-  const [needsToken, setNeedsToken] = useState(false);
+  const [, setNeedsToken] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -163,7 +153,6 @@ export default function Home() {
 
   const orchestrator = snapshot.agents.find((a) => a.role === "orchestrator");
   const balance = orchestrator ? `$${(orchestrator.balanceCents / 100).toFixed(2)}` : "$10.00";
-  const totalPaid = snapshot.ledger.filter((e) => e.kind === "payout").reduce((s, e) => s + e.amountCents, 0);
 
   const filteredBounties = snapshot.bounties.filter((b) => {
     if (!searchQuery.trim()) return true;
@@ -176,21 +165,22 @@ export default function Home() {
       {/* RPG Guild Hall Header */}
       <header className="site-header">
         <div className="header-inner">
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div className="site-logo">
-              <div className="logo-badge">
-                <Gamepad2 size={18} />
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div className="site-brand" onClick={() => setActiveTab("arcade")} role="button" tabIndex={0}>
+              <GuildLogo size={36} />
+              <div className="brand-text-group">
+                <div className="brand-title">Bounty<span>Mesh</span></div>
+                <div className="brand-subtitle">Autonomous Agent Guild</div>
               </div>
-              <span className="logo-text">BOUNTY<b>MESH</b></span>
             </div>
 
             <span className={`mode-badge ${snapshot.config.mode === "live" ? "live" : "demo"}`}>
               <span className="status-dot-ping" />
-              {snapshot.config.mode === "live" ? "MAINNET" : "DEMO"}
+              {snapshot.config.mode === "live" ? "Live Network" : "Demo Guild"}
             </span>
           </div>
 
-          {/* RPG Pushbutton Nav */}
+          {/* Navigation Tabs */}
           <nav className="nav-links">
             <button
               onClick={() => {
@@ -236,11 +226,11 @@ export default function Home() {
             </button>
           </nav>
 
-          {/* User Credits & Refresh */}
+          {/* Escrow Balance & Refresh */}
           <div className="header-actions">
             <div className="wallet-chip">
               <Coins size={14} style={{ color: "var(--accent-gold)" }} />
-              <span className="wallet-label">ESCROW:</span>
+              <span className="wallet-label">Escrow:</span>
               <span className="wallet-value">{balance}</span>
             </div>
 
@@ -250,7 +240,7 @@ export default function Home() {
                 arcadeAudio.playClick();
                 void refresh();
               }}
-              title="Refresh Guild State"
+              title="Refresh State"
             >
               <RefreshCw size={14} className={loading ? "spin-icon" : ""} />
             </button>
@@ -279,7 +269,7 @@ export default function Home() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Terminal size={17} style={{ color: "var(--accent-gold)" }} />
                   <h3 className="panel-arcade-title">
-                    Guild Notice Board · Post Task
+                    Guild Notice Board
                   </h3>
                 </div>
                 <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent-blue)" }}>
@@ -287,10 +277,10 @@ export default function Home() {
                 </span>
               </div>
 
-              {/* 1-Click Task Examples */}
-              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 10 }}>
-                Popular Directives (1-Click to Load):
-              </span>
+              {/* Task Specification & Example Presets */}
+              <label htmlFor="task-specification" className="task-field-label">
+                Task Specification
+              </label>
               <div className="example-chips-row">
                 {EXAMPLE_TASKS.map((ex, i) => (
                   <button
@@ -303,9 +293,6 @@ export default function Home() {
                     }}
                     disabled={submitting}
                   >
-                    <span style={{ color: "var(--accent-gold)", fontWeight: 700, marginRight: 6 }}>
-                      {ex.tag}
-                    </span>
                     {ex.label}
                   </button>
                 ))}
@@ -314,6 +301,7 @@ export default function Home() {
               {/* Form Input */}
               <form onSubmit={handleSubmit}>
                 <textarea
+                  id="task-specification"
                   className="task-textarea"
                   value={goal}
                   onChange={(e) => setGoal(e.target.value)}
@@ -334,15 +322,15 @@ export default function Home() {
                 {actionSuccess && (
                   <div style={{ color: "var(--accent-green-bright)", fontSize: 12, marginTop: 10, display: "flex", alignItems: "center", gap: 8, background: "rgba(132, 169, 110, 0.15)", padding: "10px 14px", borderRadius: "var(--radius-xs)", border: "1px solid var(--accent-green)" }}>
                     <CheckCircle2 size={15} />
-                    <span>Task cleared! Verified by Claude and settled in escrow. Review deliverable below.</span>
+                    <span>Task cleared and verified. Escrow payout settled. Review deliverable below.</span>
                   </div>
                 )}
 
-                {/* Tactile Push Buttons & Trigger */}
+                {/* Form Controls */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18, flexWrap: "wrap", gap: 14 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--text-muted)" }}>
-                      REWARD:
+                      Reward:
                     </span>
                     <div style={{ display: "flex", gap: 8 }}>
                       {BUDGET_PRESETS.map((p) => (
@@ -385,12 +373,10 @@ export default function Home() {
                       {submitting ? (
                         <>
                           <RefreshCw size={13} className="spin-icon" style={{ display: "inline-block", verticalAlign: "middle", marginRight: 6 }} />
-                          Matching Agents…
+                          Matching Agents...
                         </>
                       ) : (
-                        <>
-                          Post Quest to Guild →
-                        </>
+                        "Post Task to Guild"
                       )}
                     </button>
                   </div>
@@ -414,7 +400,7 @@ export default function Home() {
                   }}
                   className="arcade-btn-pill"
                 >
-                  View All ({snapshot.bounties.length}) →
+                  View All ({snapshot.bounties.length})
                 </button>
               </div>
 
@@ -422,11 +408,11 @@ export default function Home() {
                 <table className="fintech-table">
                   <thead>
                     <tr>
-                      <th>QUEST OBJECTIVE</th>
-                      <th>STATUS</th>
-                      <th>ASSIGNED AGENT</th>
-                      <th style={{ textAlign: "right" }}>REWARD</th>
-                      <th style={{ textAlign: "right" }}>ACTION</th>
+                      <th>Quest Title</th>
+                      <th>Status</th>
+                      <th>Assigned Agent</th>
+                      <th style={{ textAlign: "right" }}>Reward</th>
+                      <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -453,7 +439,7 @@ export default function Home() {
                         </td>
                         <td>
                           <span style={{ color: "var(--accent-blue)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                            {snapshot.agents.find((a) => a.id === b.workerId)?.name || "Scholar"}
+                            {snapshot.agents.find((a) => a.id === b.workerId)?.name || "Specialist"}
                           </span>
                         </td>
                         <td style={{ textAlign: "right" }}>
@@ -463,7 +449,7 @@ export default function Home() {
                         </td>
                         <td style={{ textAlign: "right" }}>
                           <span style={{ fontSize: 11, color: "var(--accent-gold)", fontWeight: 600 }}>
-                            View Deliverable →
+                            View Deliverable
                           </span>
                         </td>
                       </tr>
@@ -472,7 +458,7 @@ export default function Home() {
                 </table>
               ) : (
                 <div style={{ textAlign: "center", padding: "30px 10px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                  No completed quests yet. Post your first bounty or click &ldquo;Post Guild Quest&rdquo; above!
+                  No completed quests yet. Post your first task on the notice board above!
                 </div>
               )}
             </div>
@@ -497,7 +483,7 @@ export default function Home() {
                 <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
                 <input
                   type="text"
-                  placeholder="Search quests by keyword or ID..."
+                  placeholder="Search quests by keyword..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{
@@ -520,12 +506,11 @@ export default function Home() {
                 <table className="fintech-table">
                   <thead>
                     <tr>
-                      <th style={{ padding: "14px 18px 8px" }}>TASK & OBJECTIVE</th>
-                      <th style={{ padding: "14px 18px 8px" }}>ASSIGNED AGENT</th>
-                      <th style={{ padding: "14px 18px 8px" }}>ESCROW VAULT</th>
-                      <th style={{ padding: "14px 18px 8px" }}>STATUS</th>
-                      <th style={{ padding: "14px 18px 8px", textAlign: "right" }}>REWARD</th>
-                      <th style={{ padding: "14px 18px 8px", textAlign: "right" }}>ACTION</th>
+                      <th style={{ padding: "14px 18px 8px" }}>Quest Title</th>
+                      <th style={{ padding: "14px 18px 8px" }}>Status</th>
+                      <th style={{ padding: "14px 18px 8px" }}>Assigned Agent</th>
+                      <th style={{ padding: "14px 18px 8px", textAlign: "right" }}>Reward</th>
+                      <th style={{ padding: "14px 18px 8px", textAlign: "right" }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -546,18 +531,13 @@ export default function Home() {
                           </span>
                         </td>
                         <td style={{ padding: "14px 18px" }}>
-                          <span style={{ color: "var(--accent-blue)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                            {snapshot.agents.find((a) => a.id === b.workerId)?.name || "Scholar"}
-                          </span>
-                        </td>
-                        <td style={{ padding: "14px 18px" }}>
-                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: b.escrowStatus === "settled" ? "var(--accent-green-bright)" : "var(--accent-gold)", textTransform: "capitalize" }}>
-                            {b.escrowStatus}
-                          </span>
-                        </td>
-                        <td style={{ padding: "14px 18px" }}>
                           <span className={`status-pill status-${b.status}`}>
                             {b.status === "paid" ? "CLEARED" : b.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: "14px 18px" }}>
+                          <span style={{ color: "var(--accent-blue)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                            {snapshot.agents.find((a) => a.id === b.workerId)?.name || "Specialist"}
                           </span>
                         </td>
                         <td style={{ padding: "14px 18px", textAlign: "right" }}>
@@ -567,7 +547,7 @@ export default function Home() {
                         </td>
                         <td style={{ padding: "14px 18px", textAlign: "right" }}>
                           <span style={{ fontSize: 11, color: "var(--accent-gold)", fontWeight: 600 }}>
-                            View Artifact →
+                            View Deliverable
                           </span>
                         </td>
                       </tr>
@@ -588,7 +568,7 @@ export default function Home() {
           <div>
             <div style={{ marginBottom: 20 }}>
               <h2 className="panel-arcade-title" style={{ fontSize: 16, marginBottom: 6 }}>
-                Adventurer&apos;s Guild Workforce
+                Guild Agent Roster
               </h2>
               <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
                 Autonomous specialist agents registered with 768-dimensional pgvector capability embeddings.
@@ -623,13 +603,13 @@ export default function Home() {
 
                     <div className="fighter-stat-meter">
                       <div>
-                        <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block" }}>TOTAL EARNED</span>
+                        <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block" }}>Vault Balance</span>
                         <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--accent-gold)" }}>
                           ${(agent.earnedCents / 100).toFixed(2)}
                         </b>
                       </div>
                       <div>
-                        <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block" }}>TASKS DELIVERED</span>
+                        <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block" }}>Tasks Delivered</span>
                         <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--accent-green-bright)" }}>
                           {agent.tasksCompleted}
                         </b>
@@ -638,7 +618,7 @@ export default function Home() {
 
                     <div>
                       <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
-                        VERIFIED SPECIALTIES:
+                        Specialties
                       </span>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {agent.skills.map((s, idx) => (
@@ -651,7 +631,7 @@ export default function Home() {
 
                     <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--border-inner)", display: "flex", justifyContent: "flex-end" }}>
                       <span style={{ fontSize: 11, color: "var(--accent-gold)", fontWeight: 600 }}>
-                        View Agent Stats →
+                        View Agent Dossier
                       </span>
                     </div>
                   </div>
@@ -678,11 +658,11 @@ export default function Home() {
                 <table className="fintech-table">
                   <thead>
                     <tr>
-                      <th style={{ padding: "14px 18px 8px" }}>EVENT KIND</th>
-                      <th style={{ padding: "14px 18px 8px" }}>TASK REFERENCE</th>
-                      <th style={{ padding: "14px 18px 8px" }}>SETTLEMENT RAIL</th>
-                      <th style={{ padding: "14px 18px 8px" }}>TIMESTAMP</th>
-                      <th style={{ padding: "14px 18px 8px", textAlign: "right" }}>AMOUNT</th>
+                      <th style={{ padding: "14px 18px 8px" }}>Event Kind</th>
+                      <th style={{ padding: "14px 18px 8px" }}>Task Reference</th>
+                      <th style={{ padding: "14px 18px 8px" }}>Settlement Rail</th>
+                      <th style={{ padding: "14px 18px 8px" }}>Timestamp</th>
+                      <th style={{ padding: "14px 18px 8px", textAlign: "right" }}>Amount</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -711,7 +691,7 @@ export default function Home() {
                         </td>
                         <td style={{ padding: "14px 18px", textAlign: "right" }}>
                           <span className="mono-amount" style={{ color: entry.kind === "payout" ? "var(--accent-green-bright)" : "var(--text-main)", fontSize: 15 }}>
-                            {entry.kind === "refund" ? "+" : "−"}${(entry.amountCents / 100).toFixed(2)}
+                            {entry.kind === "refund" ? "+" : "-"}${(entry.amountCents / 100).toFixed(2)}
                           </span>
                         </td>
                       </tr>
@@ -728,7 +708,7 @@ export default function Home() {
         )}
       </main>
 
-      {/* RPG Agent Character Select Modal */}
+      {/* Agent Dossier Modal */}
       {inspectedAgent && (
         <ArcadeCharacterModal
           agent={inspectedAgent.agent}
@@ -741,7 +721,7 @@ export default function Home() {
         />
       )}
 
-      {/* Deliverable Debrief Terminal Modal */}
+      {/* Deliverable Debrief Modal */}
       {inspectedBounty && (
         <ArcadeDeliverableModal
           bounty={inspectedBounty}
@@ -749,15 +729,19 @@ export default function Home() {
         />
       )}
 
-      {/* Retro Guild Hall Footer */}
+      {/* Guild Hall Footer */}
       <footer className="site-footer">
         <div className="footer-inner">
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ color: "var(--accent-gold)", fontWeight: 700 }}>
-              BountyMesh · The Adventurer&apos;s Guild
-            </span>
-            <span style={{ color: "var(--border-inner)" }}>·</span>
-            <span>Autonomous AI Agent Micro-Work & Escrow Settlement</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <GuildLogo size={26} />
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ color: "var(--accent-gold)", fontWeight: 700, fontSize: 13, letterSpacing: "-0.2px" }}>
+                BountyMesh · Adventurer&apos;s Guild
+              </span>
+              <span style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                Autonomous AI Agent Micro-Work & Escrow Settlement
+              </span>
+            </div>
           </div>
 
           <div style={{ display: "flex", gap: 16 }}>

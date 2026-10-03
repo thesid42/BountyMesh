@@ -160,35 +160,44 @@ a {
   box-shadow: inset 0 -2px 0 var(--border-inner);
 }
 
-.site-logo {
+.site-brand {
   display: flex;
   align-items: center;
   gap: 12px;
   cursor: pointer;
   user-select: none;
+  transition: transform 0.12s ease;
 }
 
-.logo-badge {
-  width: 34px;
-  height: 34px;
-  background: var(--accent-gold);
-  border: 2px solid var(--border-outer);
-  display: grid;
-  place-items: center;
-  color: #1a1411;
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
-  border-radius: var(--radius-xs);
+.site-brand:hover {
+  transform: translateY(-1px);
 }
 
-.logo-text {
-  font-family: var(--font-pixel);
-  font-size: 11px;
-  color: var(--text-main);
-  text-shadow: 1px 1px 0 var(--border-outer);
+.brand-text-group {
+  display: flex;
+  flex-direction: column;
 }
 
-.logo-text b {
+.brand-title {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.4px;
+  line-height: 1.15;
+}
+
+.brand-title span {
   color: var(--accent-gold);
+}
+
+.brand-subtitle {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent-green-bright);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
 }
 
 .mode-badge {
@@ -294,8 +303,7 @@ a {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
 }
 
 .wallet-value {
@@ -378,7 +386,7 @@ a {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
-  padding: 7px 12px;
+  padding: 7px 14px;
   background: var(--bg-input);
   border: 2px solid var(--border-outer);
   box-shadow: inset 0 0 0 1px var(--border-inner), 0 2px 0 var(--border-outer);
@@ -386,6 +394,10 @@ a {
   color: var(--text-secondary);
   cursor: pointer;
   user-select: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   transition: all 0.1s ease;
 }
 
@@ -409,8 +421,8 @@ a {
 .arcade-btn-primary {
   font-family: var(--font-sans);
   font-size: 13px;
-  font-weight: 700;
-  padding: 8px 16px;
+  font-weight: 600;
+  padding: 8px 18px;
   background: var(--accent-green);
   border: 2px solid var(--border-outer);
   border-radius: var(--radius-xs);
@@ -420,6 +432,7 @@ a {
   user-select: none;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   transition: all 0.1s ease;
 }
@@ -547,6 +560,16 @@ a {
   margin-bottom: 28px;
 }
 
+.task-field-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.4px;
+  display: block;
+  margin-bottom: 8px;
+}
+
 .panel-arcade-title {
   font-family: var(--font-sans);
   font-size: 16px;
@@ -662,8 +685,7 @@ a {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
+  letter-spacing: 0.4px;
   padding: 0 16px 8px;
 }
 
@@ -872,11 +894,10 @@ a {
 
 .rpg-stat-label {
   font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  letter-spacing: 0.3px;
   display: block;
 }
 
@@ -892,10 +913,9 @@ a {
 .rpg-section-title {
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--accent-gold);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  letter-spacing: 0.4px;
   display: block;
   margin-bottom: 8px;
 }

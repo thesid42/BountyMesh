@@ -2,28 +2,15 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { arcadeAudio } from "@/lib/arcadeAudio";
+import { drawGuildEnvironment, drawBiddingConnections } from "./ArcadeEnvironment";
+import {
+  drawArcadeCharacter,
+  drawCharacterDialogue,
+  type ArcadeCharacter,
+} from "./ArcadeSprites";
 import type { Agent, Bounty, Snapshot } from "@/lib/contracts";
 
-export interface ArcadeCharacter {
-  id: string;
-  name: string;
-  role: "questor" | "orchestrator" | "worker";
-  model: string;
-  color: string;
-  x: number;
-  y: number;
-  targetX: number;
-  targetY: number;
-  facing: "left" | "right" | "down" | "up";
-  state: "idle" | "walking" | "bidding" | "working" | "celebrating";
-  dialogue: string | null;
-  dialogueColor?: string;
-  bidSimilarity?: number;
-  avatarType: "questor" | "claude" | "gemini" | "specialist" | "sentinel";
-  level: number;
-  gold: number;
-  skills: string[];
-}
+export type { ArcadeCharacter };
 
 interface ArcadeRoomProps {
   snapshot: Snapshot;
@@ -61,9 +48,9 @@ export function ArcadeRoom({
       role: "questor",
       model: "Client Model",
       color: "#d4b86a",
-      x: 140,
+      x: 130,
       y: 130,
-      targetX: 140,
+      targetX: 130,
       targetY: 130,
       facing: "down",
       state: "idle",
@@ -80,9 +67,9 @@ export function ArcadeRoom({
       model: "claude-sonnet-5",
       color: "#8f79a6",
       x: 480,
-      y: 190,
+      y: 175,
       targetX: 480,
-      targetY: 190,
+      targetY: 175,
       facing: "down",
       state: "idle",
       dialogue: "Awaiting quests...",
@@ -99,10 +86,10 @@ export function ArcadeRoom({
       model: "gemini-3.8-flash",
       color: "#6d8e9c",
       x: 740,
-      y: 250,
+      y: 240,
       targetX: 740,
-      targetY: 250,
-      facing: "left",
+      targetY: 240,
+      facing: "right",
       state: "idle",
       dialogue: null,
       avatarType: "gemini",
@@ -117,10 +104,10 @@ export function ArcadeRoom({
       model: "gemini-3.8-flash",
       color: "#84a96e",
       x: 740,
-      y: 380,
+      y: 370,
       targetX: 740,
-      targetY: 380,
-      facing: "left",
+      targetY: 370,
+      facing: "right",
       state: "idle",
       dialogue: null,
       avatarType: "specialist",
@@ -134,11 +121,11 @@ export function ArcadeRoom({
       role: "worker",
       model: "claude-3-haiku",
       color: "#c96b6b",
-      x: 230,
-      y: 380,
-      targetX: 230,
-      targetY: 380,
-      facing: "right",
+      x: 250,
+      y: 370,
+      targetX: 250,
+      targetY: 370,
+      facing: "left",
       state: "idle",
       dialogue: null,
       avatarType: "sentinel",
@@ -191,10 +178,10 @@ export function ArcadeRoom({
       setStagePhase("entering");
       arcadeAudio.playWarp();
       addLog(`Traveler arrived at the Guild.`);
-      questor.x = 120;
+      questor.x = 130;
       questor.y = 110;
-      questor.targetX = 420;
-      questor.targetY = 220;
+      questor.targetX = 340;
+      questor.targetY = 255;
       questor.state = "walking";
       questor.facing = "right";
 
@@ -202,8 +189,8 @@ export function ArcadeRoom({
       setTimeout(() => {
         setStagePhase("announcing");
         questor.state = "idle";
-        questor.facing = "down";
-        questor.dialogue = `QUEST: ${goalText.slice(0, 28)}... [${rewardFormatted}]`;
+        questor.facing = "right";
+        questor.dialogue = `QUEST: ${goalText.slice(0, 26)}... [${rewardFormatted}]`;
         questor.dialogueColor = "#d4b86a";
         setActiveSpeech({ charId: questor.id, text: `Seeking specialist: "${goalText}". Offering ${rewardFormatted} gold in escrow.`, tag: "NEW QUEST" });
         arcadeAudio.playCoin();
@@ -217,13 +204,13 @@ export function ArcadeRoom({
           arcadeAudio.playBid();
           addLog(`Claude computing 768-D pgvector embeddings. Gathering bids.`);
 
-          gemini.targetX = 550;
-          gemini.targetY = 250;
+          gemini.targetX = 620;
+          gemini.targetY = 245;
           gemini.state = "walking";
           gemini.facing = "left";
 
-          specialist.targetX = 460;
-          specialist.targetY = 280;
+          specialist.targetX = 480;
+          specialist.targetY = 330;
           specialist.state = "walking";
           specialist.facing = "up";
 
@@ -250,17 +237,18 @@ export function ArcadeRoom({
               gemini.state = "celebrating";
               specialist.dialogue = null;
               specialist.targetX = 740;
-              specialist.targetY = 380;
+              specialist.targetY = 370;
               specialist.state = "walking";
+              specialist.facing = "right";
               addLog(`Subcontract awarded to Gemini!`);
 
               // 5. Winner executes at workstation
               setTimeout(() => {
                 setStagePhase("executing");
                 gemini.targetX = 740;
-                gemini.targetY = 250;
+                gemini.targetY = 240;
                 gemini.state = "working";
-                gemini.facing = "left";
+                gemini.facing = "right";
                 gemini.dialogue = "Writing research brief...";
                 gemini.dialogueColor = "#6d8e9c";
                 addLog(`Gemini executing deliverable at research desk...`);
@@ -268,9 +256,10 @@ export function ArcadeRoom({
                 // 6. Deliverable submitted for Rubric Audit
                 setTimeout(() => {
                   setStagePhase("verified");
-                  gemini.targetX = 540;
-                  gemini.targetY = 230;
+                  gemini.targetX = 480;
+                  gemini.targetY = 250;
                   gemini.state = "walking";
+                  gemini.facing = "up";
                   gemini.dialogue = "Deliverable ready!";
                   arcadeAudio.playClick();
                   addLog(`Deliverable submitted for quality review.`);
@@ -292,10 +281,20 @@ export function ArcadeRoom({
                     setTimeout(() => {
                       setStagePhase("idle");
                       questor.dialogue = null;
+                      questor.targetX = 130;
+                      questor.targetY = 130;
+                      questor.state = "walking";
+                      questor.facing = "down";
+
                       claude.dialogue = "Awaiting quests...";
                       gemini.dialogue = null;
+                      gemini.targetX = 740;
+                      gemini.targetY = 240;
                       gemini.state = "idle";
+                      gemini.facing = "right";
+
                       specialist.state = "idle";
+                      specialist.facing = "right";
                     }, 4000 * speedFactor);
                   }, 1800 * speedFactor);
                 }, 2400 * speedFactor);
@@ -372,221 +371,26 @@ export function ArcadeRoom({
 
       ctx.clearRect(0, 0, width, height);
 
-      // =======================================================================
-      // 1. COZY GUILD HALL INTERIOR
-      // =======================================================================
-      // Wooden floorboards (Tavern style)
-      ctx.fillStyle = "#2c211a";
-      ctx.fillRect(0, 100, width, height - 100);
+      const totalPayoutStr = (
+        snapshot.ledger
+          .filter((e) => e.kind === "payout")
+          .reduce((s, e) => s + e.amountCents, 0) / 100
+      ).toFixed(2);
 
-      // Floor plank lines
-      ctx.lineWidth = 1.5;
-      const plankH = 34;
-      for (let y = 100; y < height; y += plankH) {
-        ctx.strokeStyle = "#1b140f";
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
+      // 1. Authentic 16-bit RPG Cozy Guild Hall Environment
+      drawGuildEnvironment(ctx, width, height, ticks, stagePhase, totalPayoutStr);
 
-        // Staggered vertical plank joints
-        const rowIdx = Math.floor((y - 100) / plankH);
-        const offset = (rowIdx % 3) * 60;
-        for (let x = offset; x < width; x += 140) {
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x, y + plankH);
-          ctx.stroke();
-        }
-      }
-
-      // Warm rug in the center
-      const rugX = width / 2 - 170;
-      const rugY = 190;
-      const rugW = 340;
-      const rugH = 150;
-      ctx.fillStyle = "#3e241e";
-      ctx.beginPath();
-      ctx.roundRect(rugX, rugY, rugW, rugH, 12);
-      ctx.fill();
-      ctx.strokeStyle = "#d4b86a";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Back Wall (Dark warm wood & stone)
-      ctx.fillStyle = "#1e1612";
-      ctx.fillRect(0, 0, width, 100);
-
-      // Wooden crossbeams on wall
-      ctx.strokeStyle = "#120d0b";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(0, 100);
-      ctx.lineTo(width, 100);
-      ctx.stroke();
-
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "#382921";
-      for (let x = 80; x < width; x += 160) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, 100);
-        ctx.stroke();
-      }
-
-      // Cozy Fireplace in center of back wall
-      const fpX = width / 2 - 40;
-      ctx.fillStyle = "#2e241e";
-      ctx.fillRect(fpX, 28, 80, 72);
-      ctx.strokeStyle = "#0a0705";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(fpX, 28, 80, 72);
-
-      // Fireplace hearth opening
-      ctx.fillStyle = "#120a06";
-      ctx.fillRect(fpX + 16, 52, 48, 48);
-
-      // Animated gentle campfire flame
-      const flameH = 14 + Math.sin(ticks * 0.15) * 4;
-      ctx.fillStyle = "#e07a2a";
-      ctx.beginPath();
-      ctx.arc(fpX + 40, 84 - flameH / 2, 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#f5c542";
-      ctx.beginPath();
-      ctx.arc(fpX + 40, 86 - flameH / 2, 6, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Header Banner
-      ctx.font = "600 13px 'DM Sans', sans-serif";
-      ctx.fillStyle = "#d4b86a";
-      ctx.fillText("BountyMesh Adventurer's Guild", 24, 42);
-
-      ctx.font = "500 11px 'JetBrains Mono', monospace";
-      ctx.fillStyle = "#84a96e";
-      ctx.fillText("Autonomous Agent Escrow Dispatch / 768-D Router", 24, 64);
-
-      // =======================================================================
-      // 2. STATIONS & ROOM FURNITURE
-      // =======================================================================
-      // A. Entrance Wooden Doors (Top Left)
-      ctx.fillStyle = "#2c1f17";
-      ctx.fillRect(96, 44, 76, 56);
-      ctx.strokeStyle = "#0a0705";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(96, 44, 76, 56);
-      // Door handles
-      ctx.fillStyle = "#d4b86a";
-      ctx.fillRect(128, 70, 4, 8);
-      ctx.fillRect(136, 70, 4, 8);
-
-      ctx.fillStyle = "#d4b86a";
-      ctx.font = "600 10px 'DM Sans', sans-serif";
-      ctx.fillText("Entrance", 114, 36);
-
-      // B. Escrow Gold Vault Chest (Top Right)
-      ctx.fillStyle = "#3a281c";
-      ctx.fillRect(width - 170, 40, 140, 60);
-      ctx.strokeStyle = "#0a0705";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(width - 170, 40, 140, 60);
-
-      // Gold bands on chest
-      ctx.fillStyle = "#d4b86a";
-      ctx.fillRect(width - 150, 40, 6, 60);
-      ctx.fillRect(width - 50, 40, 6, 60);
-
-      ctx.fillStyle = "#d4b86a";
-      ctx.font = "600 10px 'DM Sans', sans-serif";
-      ctx.fillText("Escrow Vault", width - 136, 32);
-
-      ctx.font = "600 12px 'JetBrains Mono', monospace";
-      ctx.fillStyle = "#84a96e";
-      const totalPayoutStr = (snapshot.ledger.filter((e) => e.kind === "payout").reduce((s, e) => s + e.amountCents, 0) / 100).toFixed(2);
-      ctx.fillText(`$${totalPayoutStr} Settled`, width - 134, 86);
-
-      // C. Guildmaster Claude's Table
-      const stageCenterX = width / 2;
-      const stageCenterY = 220;
-
-      // Wooden meeting table
-      ctx.beginPath();
-      ctx.ellipse(stageCenterX, stageCenterY + 40, 110, 42, 0, 0, Math.PI * 2);
-      ctx.fillStyle = "#3a281c";
-      ctx.fill();
-      ctx.strokeStyle = "#1b120c";
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      // Parchment map spread on table
-      ctx.fillStyle = "#e0d4be";
-      ctx.fillRect(stageCenterX - 30, stageCenterY + 28, 60, 26);
-      ctx.strokeStyle = "#8f7959";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(stageCenterX - 30, stageCenterY + 28, 60, 26);
-
-      // Floating crystal focus
-      const floatY = Math.sin(ticks * 0.05) * 4;
-      ctx.fillStyle = "#8f79a6";
-      ctx.beginPath();
-      ctx.arc(stageCenterX, stageCenterY - 14 + floatY, 8, 0, Math.PI * 2);
-      ctx.fill();
-
-      // D. Specialist Work Desks (Wooden tables with scrolls)
-      const renderDesk = (x: number, y: number, label: string) => {
-        ctx.fillStyle = "#332318";
-        ctx.fillRect(x - 30, y - 22, 60, 44);
-        ctx.strokeStyle = "#140c08";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x - 30, y - 22, 60, 44);
-
-        // Parchment scroll
-        ctx.fillStyle = "#ede2ce";
-        ctx.fillRect(x - 16, y - 16, 24, 18);
-        ctx.strokeStyle = "#9e8b70";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x - 16, y - 16, 24, 18);
-
-        // Candle holder
-        ctx.fillStyle = "#d4b86a";
-        ctx.fillRect(x + 12, y - 14, 5, 8);
-        // Flame
-        ctx.fillStyle = "#f5c542";
-        ctx.beginPath();
-        ctx.arc(x + 14.5, y - 17, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.font = "600 10px 'DM Sans', sans-serif";
-        ctx.fillStyle = "#d4b86a";
-        ctx.fillText(label, x - 26, y + 36);
-      };
-
-      renderDesk(740, 250, "Gemini Desk");
-      renderDesk(740, 380, "Specialist Desk");
-      renderDesk(230, 380, "Sentinel Desk");
-
-      // E. Soft Bidding Connections during Sequence
-      if (stagePhase === "bidding" || stagePhase === "matched") {
-        ctx.save();
-        ctx.setLineDash([4, 6]);
-        ctx.lineDashOffset = -ticks * 1.2;
-
-        ctx.beginPath();
-        ctx.moveTo(550, 250);
-        ctx.lineTo(stageCenterX, stageCenterY + 20);
-        ctx.strokeStyle = "#6d8e9c";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(460, 280);
-        ctx.lineTo(stageCenterX, stageCenterY + 20);
-        ctx.strokeStyle = "#84a96e";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.restore();
-      }
+      // 2. Dynamic Bidding Connections
+      const geminiChar = charactersRef.current.find((c) => c.id.includes("2222"));
+      const specialistChar = charactersRef.current.find((c) => c.id.includes("3333"));
+      drawBiddingConnections(
+        ctx,
+        stagePhase,
+        { x: geminiChar ? geminiChar.x : 550, y: geminiChar ? geminiChar.y : 250 },
+        { x: specialistChar ? specialistChar.x : 460, y: specialistChar ? specialistChar.y : 280 },
+        { x: width / 2, y: 255 },
+        ticks
+      );
 
       // =======================================================================
       // 3. CHARACTERS & ANIMATIONS
@@ -607,111 +411,11 @@ export function ArcadeRoom({
           char.state = "idle";
         }
 
-        // Soft drop shadow
-        ctx.beginPath();
-        ctx.ellipse(char.x, char.y + 4, 15, 6, 0, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
-        ctx.fill();
+        // Draw authentic 16-bit Cozy RPG pixel character and floating UI
+        drawArcadeCharacter(ctx, char, ticks);
 
-        // Step cycle bob
-        const bob = char.state === "walking" ? Math.sin(ticks * 0.35) * 3 : Math.sin(ticks * 0.08) * 1.5;
-        const charY = char.y + bob;
-
-        ctx.save();
-        ctx.translate(char.x, charY);
-
-        ctx.fillStyle = char.color;
-        ctx.strokeStyle = "#000000";
-        ctx.lineWidth = 1.5;
-
-        if (char.avatarType === "questor") {
-          // Traveler (Brown traveler cloak & gold tunic)
-          ctx.fillStyle = "#5c4033";
-          ctx.fillRect(-8, -26, 16, 18);
-          ctx.fillStyle = "#f0d59e";
-          ctx.fillRect(-6, -34, 12, 10);
-          ctx.fillStyle = "#d4b86a";
-          ctx.fillRect(char.facing === "right" ? -1 : -5, -31, 6, 3);
-        } else if (char.avatarType === "claude") {
-          // Guildmaster Claude (Purple robe & crown)
-          ctx.fillStyle = "#6b5480";
-          ctx.fillRect(-10, -28, 20, 20);
-          ctx.fillStyle = "#8f79a6";
-          ctx.fillRect(-7, -36, 14, 10);
-          ctx.fillStyle = "#e8e1d7";
-          ctx.fillRect(-4, -32, 8, 3);
-          // Small crown
-          ctx.fillStyle = "#d4b86a";
-          ctx.fillRect(-6, -42 + Math.sin(ticks * 0.1) * 2, 12, 3);
-        } else if (char.avatarType === "gemini") {
-          // Scholar Gemini (Teal robe & scroll)
-          ctx.fillStyle = "#527380";
-          ctx.fillRect(-8, -26, 16, 18);
-          ctx.fillStyle = "#6d8e9c";
-          ctx.fillRect(-6, -34, 12, 10);
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(char.facing === "right" ? 0 : -4, -31, 4, 3);
-        } else {
-          // Ranger Specialist (Hunter green)
-          ctx.fillStyle = "#628251";
-          ctx.fillRect(-8, -26, 16, 18);
-          ctx.fillStyle = "#84a96e";
-          ctx.fillRect(-6, -34, 12, 10);
-          ctx.fillStyle = "#1c140f";
-          ctx.fillRect(-4, -31, 8, 3);
-        }
-
-        // Celebrate indicator
-        if (char.state === "celebrating") {
-          ctx.fillStyle = "#d4b86a";
-          ctx.font = "bold 13px sans-serif";
-          ctx.fillText("+", -14, -42);
-          ctx.fillText("+", 8, -42);
-        }
-
-        ctx.restore();
-
-        // Character Name & Balance Tag
-        ctx.font = "600 11px 'DM Sans', sans-serif";
-        ctx.fillStyle = "#f0eae1";
-        ctx.textAlign = "center";
-        ctx.fillText(`${char.name}`, char.x, char.y - 42);
-
-        ctx.font = "600 11px 'JetBrains Mono', monospace";
-        ctx.fillStyle = char.color;
-        ctx.fillText(`$${(char.gold / 100).toFixed(2)}`, char.x, char.y - 28);
-
-        // Cozy Speech Bubble
         if (char.dialogue) {
-          const bubbleText = char.dialogue;
-          ctx.font = "500 12px 'DM Sans', sans-serif";
-          const textMetrics = ctx.measureText(bubbleText);
-          const bubbleW = Math.max(90, textMetrics.width + 24);
-          const bubbleH = 26;
-          const bubbleX = char.x - bubbleW / 2;
-          const bubbleY = char.y - 78;
-
-          // Warm box
-          ctx.fillStyle = "#251d19";
-          ctx.beginPath();
-          ctx.roundRect(bubbleX, bubbleY, bubbleW, bubbleH, 4);
-          ctx.fill();
-
-          ctx.strokeStyle = char.dialogueColor || "#d4b86a";
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-
-          // Pointer tail
-          ctx.beginPath();
-          ctx.moveTo(char.x - 4, bubbleY + bubbleH);
-          ctx.lineTo(char.x, bubbleY + bubbleH + 5);
-          ctx.lineTo(char.x + 4, bubbleY + bubbleH);
-          ctx.fillStyle = char.dialogueColor || "#d4b86a";
-          ctx.fill();
-
-          // Text
-          ctx.fillStyle = "#f0eae1";
-          ctx.fillText(bubbleText, char.x, bubbleY + 17);
+          drawCharacterDialogue(ctx, char);
         }
       });
 

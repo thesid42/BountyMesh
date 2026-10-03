@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Copy, Check, Terminal, ShieldCheck, FileText, CheckCircle2 } from "lucide-react";
+import { X, Copy, Check, CheckCircle2 } from "lucide-react";
 import type { Bounty } from "@/lib/contracts";
 
 interface ArcadeDeliverableModalProps {
@@ -31,36 +31,34 @@ export function ArcadeDeliverableModal({ bounty, onClose }: ArcadeDeliverableMod
             </span>
             <div>
               <h2 className="rpg-name">{bounty.title}</h2>
-              <span className="rpg-subtext">QUEST #{bounty.id.slice(0, 8)} · ESCROW: ${(bounty.rewardCents / 100).toFixed(2)}</span>
+              <span className="rpg-subtext">Task Artifact #{bounty.id.slice(0, 8)} · Escrow: ${(bounty.rewardCents / 100).toFixed(2)}</span>
             </div>
           </div>
 
-          <button onClick={onClose} className="arcade-close-btn">
+          <button onClick={onClose} className="arcade-close-btn" aria-label="Close dialog">
             <X size={16} />
           </button>
         </div>
 
-        {/* Task Specification Given */}
+        {/* Client Specification */}
         <div style={{ marginTop: 14 }}>
-          <span className="rpg-section-title">CLIENT SPECIFICATION & OBJECTIVE</span>
+          <span className="rpg-section-title">Client Specification</span>
           <p className="rpg-lore-text" style={{ fontSize: 13, background: "var(--bg-input)", padding: 12, borderRadius: 4, border: "2px solid var(--border-outer)" }}>
             {bounty.description}
           </p>
         </div>
 
-        {/* Specialist Deliverable Terminal */}
+        {/* Specialist Deliverable */}
         {bounty.deliverable && (
           <div style={{ marginTop: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span className="rpg-section-title">
-                SPECIALIST DELIVERABLE ({bounty.deliverable.kind.toUpperCase()})
-              </span>
+              <span className="rpg-section-title">Specialist Deliverable</span>
               <button
                 className="arcade-btn-pill"
                 onClick={() => handleCopy(bounty.deliverable?.content ?? "")}
-                style={{ fontSize: 10, padding: "5px 12px" }}
+                style={{ fontSize: 11, padding: "5px 12px" }}
               >
-                {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? "Copied!" : "Copy Deliverable"}
+                {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? "Copied" : "Copy Deliverable"}
               </button>
             </div>
 
@@ -76,25 +74,33 @@ export function ArcadeDeliverableModal({ bounty, onClose }: ArcadeDeliverableMod
           </div>
         )}
 
-        {/* Orchestrator Rubric Review */}
+        {/* Rubric Audit Verdict */}
         {bounty.review && (
           <div style={{ marginTop: 16 }}>
             <span className="rpg-section-title" style={{ color: "var(--accent-green)" }}>
-              ORCHESTRATOR RUBRIC AUDIT & VERDICT
+              Rubric Audit Verdict
             </span>
             <div style={{ background: "rgba(132, 169, 110, 0.12)", border: "2px solid var(--border-outer)", borderRadius: 4, padding: 12, fontSize: 13, color: "var(--text-main)", lineHeight: 1.55 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, fontWeight: 700, color: "var(--accent-green-bright)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
-                <CheckCircle2 size={14} /> VERIFICATION PASSED · 100% RUBRIC SATISFACTION
+                <CheckCircle2 size={14} /> Verification Passed · 100% Rubric Satisfaction
               </div>
               {bounty.review}
             </div>
           </div>
         )}
 
-        {/* Modal Close Button */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
+        {/* Action Buttons */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
+          {bounty.deliverable && (
+            <button
+              onClick={() => handleCopy(bounty.deliverable?.content ?? "")}
+              className="arcade-btn-pill"
+            >
+              {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? "Copied" : "Copy Deliverable"}
+            </button>
+          )}
           <button onClick={onClose} className="arcade-btn-primary">
-            Close Deliverable
+            Close
           </button>
         </div>
       </div>
