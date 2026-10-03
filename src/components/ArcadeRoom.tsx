@@ -55,15 +55,33 @@ interface GuildStation {
   arrivalChatter?: string[];
 }
 
-const FLOOR_MIN_X = 155;
-const FLOOR_MAX_X = 825;
-const FLOOR_MIN_Y = 155;
+const FLOOR_MIN_X = 165;
+const FLOOR_MAX_X = 770;
+const FLOOR_MIN_Y = 198;
 const FLOOR_MAX_Y = 415;
 
 const TABLE_CENTER_X = 480;
-const TABLE_CENTER_Y = 255;
-const TABLE_RADIUS_X = 92;
-const TABLE_RADIUS_Y = 36;
+const TABLE_CENTER_Y = 260;
+const TABLE_RADIUS_X = 115;
+const TABLE_RADIUS_Y = 46;
+
+interface RectObstacle {
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+}
+
+const DESK_OBSTACLES: RectObstacle[] = [
+  // Gemini scholar desk
+  { xMin: 775, xMax: 860, yMin: 215, yMax: 268 },
+  // Specialist ranger desk
+  { xMin: 775, xMax: 860, yMin: 345, yMax: 398 },
+  // Sentinel watch desk
+  { xMin: 130, xMax: 215, yMin: 345, yMax: 398 },
+  // Tavern bar counter
+  { xMin: 0, xMax: 155, yMin: 195, yMax: 300 },
+];
 
 function pathIntersectsTable(
   x1: number,
@@ -71,8 +89,8 @@ function pathIntersectsTable(
   x2: number,
   y2: number
 ): boolean {
-  const rx = TABLE_RADIUS_X + 12;
-  const ry = TABLE_RADIUS_Y + 12;
+  const rx = TABLE_RADIUS_X + 16;
+  const ry = TABLE_RADIUS_Y + 16;
   const ax = (x1 - TABLE_CENTER_X) / rx;
   const ay = (y1 - TABLE_CENTER_Y) / ry;
   const bx = (x2 - TABLE_CENTER_X) / rx;
@@ -89,13 +107,44 @@ function pathIntersectsTable(
   return px * px + py * py < 1.0;
 }
 
+function computeRouteWaypoint(
+  startX: number,
+  startY: number,
+  destX: number,
+  destY: number
+): { x: number; y: number } | null {
+  if (!pathIntersectsTable(startX, startY, destX, destY)) return null;
+
+  // Crossing vertically across table (North <-> South)
+  if (
+    (startY < TABLE_CENTER_Y && destY > TABLE_CENTER_Y) ||
+    (startY > TABLE_CENTER_Y && destY < TABLE_CENTER_Y)
+  ) {
+    const midX = (startX + destX) / 2;
+    const detourX = midX < TABLE_CENTER_X ? 335 : 625;
+    return { x: detourX, y: TABLE_CENTER_Y };
+  }
+
+  // Crossing horizontally across table (West <-> East)
+  if (
+    (startX < TABLE_CENTER_X && destX > TABLE_CENTER_X) ||
+    (startX > TABLE_CENTER_X && destX < TABLE_CENTER_X)
+  ) {
+    const midY = (startY + destY) / 2;
+    const detourY = midY < TABLE_CENTER_Y ? 202 : 330;
+    return { x: TABLE_CENTER_X, y: detourY };
+  }
+
+  return null;
+}
+
 const GUILD_STATIONS: GuildStation[] = [
-  // 1. Notice Board (x: 245, y: 160) - standing on floor in front of board, looking up
+  // 1. Notice Board (x: 245, y: 202) - standing comfortably in front of board, looking up
   {
     id: "notice-board",
     name: "Guild Notice Board",
     x: 245,
-    y: 162,
+    y: 202,
     facing: "up",
     stationType: "notice-board",
     preferredCharIds: ["questor-player", "sentinel-worker"],
@@ -104,31 +153,40 @@ const GUILD_STATIONS: GuildStation[] = [
       "Checking reward tiers on the notice board...",
     ],
   },
-  // 2. Guild Hearth Fireplace (x: 480, y: 162) - standing safely on floor in front of fireplace
+  // 2. Guild Hearth Fireplace West (x: 430, y: 202)
   {
-    id: "hearth",
+    id: "hearth-west",
     name: "Guild Hearth Fireplace",
-    x: 480,
-    y: 162,
-    facing: "up",
+    x: 430,
+    y: 202,
+    facing: "right",
     stationType: "hearth",
-    preferredCharIds: [
-      "11111111-1111-4111-8111-111111111111",
-      "33333333-3333-4333-8333-333333333333",
-      "questor-player",
-    ],
+    preferredCharIds: ["11111111-1111-4111-8111-111111111111", "questor-player"],
     arrivalChatter: [
       "Warming hands by the hearth fire...",
       "Warm embers crackling softly in the grate...",
-      "Resting before the next bounty assignment...",
     ],
   },
-  // 3. Ancient Library Bookshelf (x: 638, y: 162) - in front of bookshelf codices
+  // 3. Guild Hearth Fireplace East (x: 530, y: 202)
+  {
+    id: "hearth-east",
+    name: "Guild Hearth Fireplace",
+    x: 530,
+    y: 202,
+    facing: "left",
+    stationType: "hearth",
+    preferredCharIds: ["33333333-3333-4333-8333-333333333333", "questor-player"],
+    arrivalChatter: [
+      "Resting before the next bounty assignment...",
+      "Comforting hearth warmth radiates through the hall...",
+    ],
+  },
+  // 4. Ancient Library Bookshelf (x: 640, y: 202)
   {
     id: "library-main",
     name: "Ancient Library Bookshelf",
-    x: 638,
-    y: 162,
+    x: 640,
+    y: 202,
     facing: "up",
     stationType: "bookshelf",
     preferredCharIds: ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"],
@@ -138,12 +196,12 @@ const GUILD_STATIONS: GuildStation[] = [
       "Consulting ancient algorithmic codices...",
     ],
   },
-  // 4. Guild Escrow Vault (x: 810, y: 162) - in front of gold vault
+  // 5. Guild Escrow Vault (x: 765, y: 202)
   {
     id: "vault",
     name: "Guild Escrow Vault",
-    x: 810,
-    y: 162,
+    x: 765,
+    y: 202,
     facing: "up",
     stationType: "vault",
     preferredCharIds: ["11111111-1111-4111-8111-111111111111", "questor-player"],
@@ -152,12 +210,12 @@ const GUILD_STATIONS: GuildStation[] = [
       "Ledger balances match vault reserve gold.",
     ],
   },
-  // 5. Tavern Bar Counter (x: 165, y: 245) - standing right at the oak bar, facing drinks
+  // 6. Tavern Bar Counter (x: 180, y: 250)
   {
     id: "tavern-bar",
     name: "Tavern Bar & Cider Kegs",
-    x: 165,
-    y: 245,
+    x: 180,
+    y: 250,
     facing: "left",
     stationType: "bar",
     preferredCharIds: ["questor-player", "33333333-3333-4333-8333-333333333333", "sentinel-worker"],
@@ -167,12 +225,12 @@ const GUILD_STATIONS: GuildStation[] = [
       "Checking alchemical stamina draughts...",
     ],
   },
-  // 6. Strategy Table Stations (surrounding oak table at 480, 255)
+  // 7. Strategy Table Stations (surrounding oak table at 480, 260)
   {
     id: "table-north",
     name: "Strategy Table (North)",
     x: 480,
-    y: 195,
+    y: 205,
     facing: "down",
     stationType: "table",
     preferredCharIds: ["11111111-1111-4111-8111-111111111111"],
@@ -185,7 +243,7 @@ const GUILD_STATIONS: GuildStation[] = [
     id: "table-south",
     name: "Strategy Table (South)",
     x: 480,
-    y: 320,
+    y: 325,
     facing: "up",
     stationType: "table",
     preferredCharIds: ["33333333-3333-4333-8333-333333333333", "questor-player"],
@@ -197,8 +255,8 @@ const GUILD_STATIONS: GuildStation[] = [
   {
     id: "table-west",
     name: "Strategy Table (West)",
-    x: 350,
-    y: 255,
+    x: 345,
+    y: 260,
     facing: "right",
     stationType: "table",
     preferredCharIds: ["questor-player", "sentinel-worker"],
@@ -210,8 +268,8 @@ const GUILD_STATIONS: GuildStation[] = [
   {
     id: "table-east",
     name: "Strategy Table (East)",
-    x: 610,
-    y: 255,
+    x: 615,
+    y: 260,
     facing: "left",
     stationType: "table",
     preferredCharIds: ["22222222-2222-4222-8222-222222222222"],
@@ -220,12 +278,12 @@ const GUILD_STATIONS: GuildStation[] = [
       "Analyzing capability embeddings...",
     ],
   },
-  // 7. Research Desks
+  // 8. Research Desks
   {
     id: "desk-gemini",
     name: "Scholar's Research Desk",
-    x: 740,
-    y: 240,
+    x: 745,
+    y: 245,
     facing: "right",
     stationType: "desk",
     preferredCharIds: ["22222222-2222-4222-8222-222222222222"],
@@ -237,7 +295,7 @@ const GUILD_STATIONS: GuildStation[] = [
   {
     id: "desk-specialist",
     name: "Ranger's Workstation",
-    x: 740,
+    x: 745,
     y: 370,
     facing: "right",
     stationType: "desk",
@@ -258,6 +316,33 @@ const GUILD_STATIONS: GuildStation[] = [
     arrivalChatter: [
       "Running invariant unit test checks...",
       "Auditing escrow lock invariants...",
+    ],
+  },
+  // 9. Central Rug / Open Floor Lounges
+  {
+    id: "lounge-west",
+    name: "Tavern Hearthside Lounge",
+    x: 300,
+    y: 345,
+    facing: "right",
+    stationType: "table",
+    preferredCharIds: ["questor-player", "33333333-3333-4333-8333-333333333333"],
+    arrivalChatter: [
+      "Taking a well-earned rest in the guild hall...",
+      "Reviewing upcoming adventurer credentials...",
+    ],
+  },
+  {
+    id: "lounge-east",
+    name: "Guild Research Alcove",
+    x: 660,
+    y: 345,
+    facing: "left",
+    stationType: "table",
+    preferredCharIds: ["22222222-2222-4222-8222-222222222222", "11111111-1111-4111-8111-111111111111"],
+    arrivalChatter: [
+      "Comparing benchmark results across agents...",
+      "Optimizing latency and quality trade-offs...",
     ],
   },
 ];
@@ -529,9 +614,9 @@ export function ArcadeRoom({
       model: "Client Model",
       color: "#d4b86a",
       x: 240,
-      y: 190,
+      y: 220,
       targetX: 240,
-      targetY: 190,
+      targetY: 220,
       facing: "down",
       state: "idle",
       dialogue: null,
@@ -540,7 +625,7 @@ export function ArcadeRoom({
       gold: 0,
       skills: ["task architect", "escrow funder", "prompt design"],
       homeX: 240,
-      homeY: 190,
+      homeY: 220,
       idlePauseTimer: 3.5,
       chatCooldownTimer: 4.0,
     },
@@ -551,9 +636,9 @@ export function ArcadeRoom({
       model: "claude-sonnet-5",
       color: "#8f79a6",
       x: 480,
-      y: 195,
+      y: 205,
       targetX: 480,
-      targetY: 195,
+      targetY: 205,
       facing: "down",
       state: "idle",
       dialogue: "Awaiting quests...",
@@ -563,7 +648,7 @@ export function ArcadeRoom({
       gold: 0,
       skills: ["planning", "research", "quality review", "market analysis"],
       homeX: 480,
-      homeY: 195,
+      homeY: 205,
       idlePauseTimer: 5.5,
       chatCooldownTimer: 5.0,
     },
@@ -573,10 +658,10 @@ export function ArcadeRoom({
       role: "worker",
       model: "gemini-3.8-flash",
       color: "#6d8e9c",
-      x: 740,
-      y: 240,
-      targetX: 740,
-      targetY: 240,
+      x: 745,
+      y: 245,
+      targetX: 745,
+      targetY: 245,
       facing: "right",
       state: "idle",
       dialogue: null,
@@ -584,8 +669,8 @@ export function ArcadeRoom({
       level: 45,
       gold: 0,
       skills: ["data visualization", "market research", "analysis", "report writing"],
-      homeX: 740,
-      homeY: 240,
+      homeX: 745,
+      homeY: 245,
       idlePauseTimer: 7.5,
       chatCooldownTimer: 6.0,
     },
@@ -595,9 +680,9 @@ export function ArcadeRoom({
       role: "worker",
       model: "gemini-3.8-flash",
       color: "#84a96e",
-      x: 740,
+      x: 745,
       y: 370,
-      targetX: 740,
+      targetX: 745,
       targetY: 370,
       facing: "right",
       state: "idle",
@@ -606,7 +691,7 @@ export function ArcadeRoom({
       level: 52,
       gold: 0,
       skills: ["competitive research", "synthesis", "business strategy"],
-      homeX: 740,
+      homeX: 745,
       homeY: 370,
       idlePauseTimer: 4.5,
       chatCooldownTimer: 5.0,
@@ -965,8 +1050,8 @@ export function ArcadeRoom({
         arcadeAudio.playWarp();
         const questor = charactersRef.current.find((c) => c.role === "questor");
         if (questor && stagePhase === "idle") {
-          questor.targetX = 180;
-          questor.targetY = 165;
+          questor.targetX = 240;
+          questor.targetY = 215;
           questor.wanderWaypoint = null;
           questor.state = "walking";
           questor.idlePauseTimer = 7.0;
@@ -983,11 +1068,7 @@ export function ArcadeRoom({
       questor.targetX = Math.max(FLOOR_MIN_X, Math.min(FLOOR_MAX_X, clickX));
       questor.targetY = Math.max(FLOOR_MIN_Y, Math.min(FLOOR_MAX_Y, clickY));
       questor.state = "walking";
-      if (pathIntersectsTable(questor.x, questor.y, questor.targetX, questor.targetY)) {
-        questor.wanderWaypoint = { x: 480, y: (questor.y + questor.targetY) / 2 < 255 ? 185 : 325 };
-      } else {
-        questor.wanderWaypoint = null;
-      }
+      questor.wanderWaypoint = computeRouteWaypoint(questor.x, questor.y, questor.targetX, questor.targetY);
       questor.idlePauseTimer = 8.0; // Wait 8 seconds before resuming autonomous roaming
     }
   };
@@ -1119,12 +1200,7 @@ export function ArcadeRoom({
                 char.lastPosY = char.y;
 
                 // Path routing: check if direct path crosses the central strategy table
-                if (pathIntersectsTable(char.x, char.y, chosen.x, chosen.y)) {
-                  const detourY = (char.y + chosen.y) / 2 < 255 ? 190 : 325;
-                  char.wanderWaypoint = { x: 480, y: detourY };
-                } else {
-                  char.wanderWaypoint = null;
-                }
+                char.wanderWaypoint = computeRouteWaypoint(char.x, char.y, char.targetX, char.targetY);
               } else {
                 // No station available right now; brief pause before retrying
                 char.idlePauseTimer = 2.0 + Math.random() * 2.0;
@@ -1145,34 +1221,68 @@ export function ArcadeRoom({
         const dist = Math.hypot(dx, dy);
 
         const isWalking = char.state === "walking";
-        const baseSpeed = currentPhase === "idle" ? 82 : 135;
+        const baseSpeed = currentPhase === "idle" ? 75 : 125;
         const moveSpeed = (isWalking ? baseSpeed : 0) * dt;
-        const arrivalDist = 6;
 
         if (isWalking) {
-          if (dist > arrivalDist) {
-            const step = Math.min(moveSpeed, dist);
-            char.x += (dx / dist) * step;
-            char.y += (dy / dist) * step;
+          if (dist > 6) {
+            let vx = (dx / dist) * Math.min(moveSpeed, dist);
+            let vy = (dy / dist) * Math.min(moveSpeed, dist);
 
-            // Update directional facing with hysteresis
-            if (Math.abs(dx) > Math.abs(dy) + 3) {
-              char.facing = dx > 0 ? "right" : "left";
-            } else if (Math.abs(dy) > Math.abs(dx) + 3) {
-              char.facing = dy > 0 ? "down" : "up";
+            // 1. Smooth sliding along elliptical strategy table
+            const nextX = char.x + vx;
+            const nextY = char.y + vy;
+            const normX = (nextX - TABLE_CENTER_X) / TABLE_RADIUS_X;
+            const normY = (nextY - TABLE_CENTER_Y) / TABLE_RADIUS_Y;
+            const distSq = normX * normX + normY * normY;
+            if (distSq < 1.0) {
+              const nx = normX / TABLE_RADIUS_X;
+              const ny = normY / TABLE_RADIUS_Y;
+              const nLen = Math.hypot(nx, ny) || 1;
+              const unx = nx / nLen;
+              const uny = ny / nLen;
+              const dot = vx * unx + vy * uny;
+              if (dot < 0) {
+                vx -= dot * unx;
+                vy -= dot * uny;
+              }
             }
 
-            // Clear waypoint once reached
-            if (char.wanderWaypoint && dist <= 20) {
+            // 2. Sliding along desk rectangular obstacles
+            DESK_OBSTACLES.forEach((box) => {
+              if (nextX >= box.xMin && nextX <= box.xMax && nextY >= box.yMin && nextY <= box.yMax) {
+                const dLeft = Math.abs(char.x - box.xMin);
+                const dRight = Math.abs(char.x - box.xMax);
+                const dTop = Math.abs(char.y - box.yMin);
+                const dBottom = Math.abs(char.y - box.yMax);
+                const minD = Math.min(dLeft, dRight, dTop, dBottom);
+                if (minD === dLeft || minD === dRight) {
+                  vx = 0;
+                } else {
+                  vy = 0;
+                }
+              }
+            });
+
+            // 3. Apply position clamped within safe floor boundaries
+            char.x = Math.max(FLOOR_MIN_X, Math.min(FLOOR_MAX_X, char.x + vx));
+            char.y = Math.max(FLOOR_MIN_Y, Math.min(FLOOR_MAX_Y, char.y + vy));
+
+            // 4. Update facing based on actual movement vector
+            if (Math.abs(vx) > Math.abs(vy) + 0.1) {
+              char.facing = vx > 0 ? "right" : "left";
+            } else if (Math.abs(vy) > 0.1) {
+              char.facing = vy > 0 ? "down" : "up";
+            }
+
+            // Clear intermediate waypoint once reached
+            if (char.wanderWaypoint && Math.hypot(char.x - char.wanderWaypoint.x, char.y - char.wanderWaypoint.y) <= 18) {
               char.wanderWaypoint = null;
             }
 
-            // Anti-stuck detection: verify if character is actually making progress
-            const movedDist = Math.hypot(
-              char.x - (char.lastPosX ?? char.x),
-              char.y - (char.lastPosY ?? char.y)
-            );
-            if (movedDist < 0.8) {
+            // Anti-stuck progress verification
+            const progress = Math.hypot(char.x - (char.lastPosX ?? char.x), char.y - (char.lastPosY ?? char.y));
+            if (progress < 0.12) {
               char.stuckTimer = (char.stuckTimer || 0) + dt;
             } else {
               char.stuckTimer = 0;
@@ -1180,20 +1290,15 @@ export function ArcadeRoom({
               char.lastPosY = char.y;
             }
 
-            // If stuck for more than 1.0s (e.g. pinned against obstacle or another character):
-            if (char.stuckTimer > 1.0) {
+            // If completely blocked for more than 1.6s, recover cleanly to idle
+            if (char.stuckTimer > 1.6) {
               char.stuckTimer = 0;
               char.wanderWaypoint = null;
               char.state = "idle";
-              // If near top wall, step down toward open floor
-              if (char.y <= FLOOR_MIN_Y + 10) {
-                char.y += 18;
-                char.facing = "down";
-              }
-              char.idlePauseTimer = 1.0 + Math.random() * 2.0;
+              char.idlePauseTimer = 1.5 + Math.random() * 2.0;
             }
           } else {
-            // Arrived at destination!
+            // Reached destination!
             if (char.wanderWaypoint) {
               char.wanderWaypoint = null;
             } else {
@@ -1201,21 +1306,19 @@ export function ArcadeRoom({
               char.y = char.targetY;
               char.state = "idle";
               char.stuckTimer = 0;
+              char.lastPosX = char.x;
+              char.lastPosY = char.y;
 
               if (currentPhase === "idle") {
-                // Find matching station to orient facing and randomized pause
                 const station = GUILD_STATIONS.find(
                   (s) => Math.hypot(s.x - char.x, s.y - char.y) < 32
                 );
                 if (station) {
                   char.facing = station.facing;
-                  // Randomized pause between 3.5 and 8 seconds facing the station
                   char.idlePauseTimer = 3.5 + Math.random() * 4.5;
-
-                  // 30% chance of station arrival thought if not in chat cooldown
                   if (
                     station.arrivalChatter &&
-                    Math.random() < 0.3 &&
+                    Math.random() < 0.35 &&
                     (!char.chatCooldownTimer || char.chatCooldownTimer <= 0) &&
                     !char.dialogue
                   ) {
@@ -1227,7 +1330,7 @@ export function ArcadeRoom({
                     char.chatCooldownTimer = 10.0;
                   }
                 } else {
-                  char.idlePauseTimer = 3.0 + Math.random() * 4.0;
+                  char.idlePauseTimer = 3.0 + Math.random() * 3.5;
                 }
               }
             }
@@ -1250,13 +1353,14 @@ export function ArcadeRoom({
           const dy = c1.y - c2.y;
           const dist = Math.hypot(dx, dy);
 
-          // Soft body repulsion clearance (minimum 32px)
           const minSpacing = 32;
           if (dist < minSpacing && dist > 0.001) {
             const overlap = (minSpacing - dist) / minSpacing;
             const nx = dx / dist;
             const ny = dy / dist;
             const push = overlap * 1.5;
+
+            // If one character is idle, push the walking character around them
             if (c1.state === "walking" && c2.state === "walking") {
               c1.x += nx * push * 0.5;
               c1.y += ny * push * 0.5;
@@ -1272,10 +1376,10 @@ export function ArcadeRoom({
           }
 
           // Lateral yielding when walking paths cross
-          if (dist < 50 && c1.state === "walking" && c2.state === "walking") {
+          if (dist < 48 && c1.state === "walking" && c2.state === "walking") {
             const nx = dx / (dist || 1);
             const ny = dy / (dist || 1);
-            const steerFactor = 0.4 * ((50 - dist) / 50);
+            const steerFactor = 0.35 * ((48 - dist) / 48);
             c1.x += -ny * steerFactor;
             c1.y += nx * steerFactor;
             c2.x -= -ny * steerFactor;
@@ -1285,21 +1389,9 @@ export function ArcadeRoom({
       }
 
       // -----------------------------------------------------------------------
-      // 5. OBSTACLE AVOIDANCE & BOUNDARY CLAMPING
+      // 5. BOUNDARY CLAMPING
       // -----------------------------------------------------------------------
       chars.forEach((char) => {
-        // Soft push away from center of strategy table (rx: 92, ry: 36)
-        const normX = (char.x - TABLE_CENTER_X) / TABLE_RADIUS_X;
-        const normY = (char.y - TABLE_CENTER_Y) / TABLE_RADIUS_Y;
-        const distSq = normX * normX + normY * normY;
-        if (distSq < 1.0) {
-          const dist = Math.sqrt(distSq) || 0.001;
-          const push = (1.0 - dist) * 1.8;
-          char.x += (normX / dist) * push * TABLE_RADIUS_X * 0.12;
-          char.y += (normY / dist) * push * TABLE_RADIUS_Y * 0.12;
-        }
-
-        // Clamp inside authentic floor bounds (avoid walls & furniture borders)
         char.x = Math.max(FLOOR_MIN_X, Math.min(FLOOR_MAX_X, char.x));
         char.y = Math.max(FLOOR_MIN_Y, Math.min(FLOOR_MAX_Y, char.y));
       });
@@ -1417,11 +1509,45 @@ export function ArcadeRoom({
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div>
             <h2 className="arcade-marquee-title">The Adventurer&apos;s Guild Hall</h2>
-            <span style={{ color: stagePhase === "failed" ? "#fbbf24" : stagePhase === "paid" ? "#34d399" : "#94a3b8", fontFamily: "var(--font-mono)", fontSize: 9 }}>
-              {currentRun ? <>{stagePhase.toUpperCase()} · {currentWorker?.name ?? "No worker assigned"}</> : isExecuting || awaitingSelectedRun ? "AWAITING SELECTED RUN STATE" : "LIVE NETWORK · PERSISTED STATE"}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background:
+                    stagePhase === "failed"
+                      ? "#fbbf24"
+                      : stagePhase === "paid"
+                      ? "#34d399"
+                      : isExecuting || awaitingSelectedRun
+                      ? "#38bdf8"
+                      : "var(--accent-green-bright)",
+                }}
+              />
+              <span
+                style={{
+                  color:
+                    stagePhase === "failed"
+                      ? "#fbbf24"
+                      : stagePhase === "paid"
+                      ? "#34d399"
+                      : "#cbd5e1",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: "0.3px",
+                }}
+              >
+                {currentRun
+                  ? `${stagePhase.toUpperCase()} · ${currentWorker?.name ?? "No worker assigned"}`
+                  : isExecuting || awaitingSelectedRun
+                  ? "AWAITING SELECTED RUN STATE"
+                  : "LIVE GUILD · READY FOR QUESTS"}
+              </span>
+            </div>
           </div>
-
         </div>
 
         {/* Controls */}
