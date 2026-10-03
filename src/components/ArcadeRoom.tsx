@@ -764,14 +764,16 @@ export function ArcadeRoom({
 
   // Selected request identity wins over snapshot recency. Since snapshots are
   // capped, a missing selected row means "awaiting", never "not persisted".
-  // Only evaluate a current run if an active request or run was explicitly initiated.
+  // The guild room only engages in run simulation/narration when a run is actively executing.
   const hasSelectedIdentity = Boolean(activeRequestKey || activeRunId);
-  const currentRun = activeRequestKey
-    ? snapshot.runs.find((run) => run.id === activeRequestKey || run.idempotencyKey === activeRequestKey) ?? null
-    : activeRunId
+  const currentRun = isExecuting
+    ? activeRequestKey
+      ? snapshot.runs.find((run) => run.id === activeRequestKey || run.idempotencyKey === activeRequestKey) ?? null
+      : activeRunId
       ? snapshot.runs.find((run) => run.id === activeRunId) ?? null
-      : null;
-  const awaitingSelectedRun = hasSelectedIdentity && !currentRun;
+      : null
+    : null;
+  const awaitingSelectedRun = isExecuting && hasSelectedIdentity && !currentRun;
   const currentBounty = snapshot.bounties.find((bounty) => bounty.runId === currentRun?.id) ?? null;
   const currentWorker = snapshot.agents.find((agent) => agent.id === currentBounty?.workerId) ?? null;
   const runActivity = currentRun ? snapshot.activity.filter((entry) => entry.runId === currentRun.id).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)).slice(-10) : [];
@@ -791,7 +793,7 @@ export function ArcadeRoom({
     && canRunLiveDemo && !isExecuting && currentRun?.status !== "running";
 
   useEffect(() => {
-    if (!currentRun) {
+    if (!currentRun || !isExecuting) {
       if (isExecuting || awaitingSelectedRun) {
         setActiveSpeech({ charId: "questor-player", text: "Awaiting selected run state from the persisted snapshot.", tag: "LIVE REQUEST" });
         setGameLog(["REQUEST: Awaiting selected run state."]);
@@ -806,13 +808,13 @@ export function ArcadeRoom({
   }, [currentRun?.id, currentRun?.status, isExecuting, runActivity.map((entry) => entry.id).join("|"), snapshot.agents, awaitingSelectedRun]);
 
   useEffect(() => {
-    if (!currentRun) return;
+    if (!currentRun || !isExecuting) return;
     const latest = runActivity[runActivity.length - 1];
     if (latest) {
       const actor = snapshot.agents.find((agent) => agent.id === latest.actorId);
       setActiveSpeech({ charId: latest.actorId ?? "11111111-1111-4111-8111-111111111111", text: latest.message, tag: actor?.name ?? latest.type.toUpperCase() });
     }
-  }, [currentRun?.id, runActivity.at(-1)?.id, snapshot.agents]);
+  }, [currentRun?.id, isExecuting, runActivity.at(-1)?.id, snapshot.agents]);
 
   // Optional speech is derived exclusively from the authenticated, persisted run.
   // Narrate only once per selected persisted run; lifecycle text below continues
@@ -821,7 +823,7 @@ export function ArcadeRoom({
     const statusKey = currentRun
       ? currentRun.id
       : "";
-    if (snapshot.config.mode !== "live" || !currentRun || !statusKey) {
+    if (!voiceEnabled || snapshot.config.mode !== "live" || !currentRun || !statusKey || !isExecuting) {
       if (!voiceEnabled) arcadeAudio.stopSpeech();
       return;
     }
@@ -911,10 +913,14 @@ export function ArcadeRoom({
     const chars = charactersRef.current;
     const questor = chars.find((char) => char.role === "questor");
     const claude = chars.find((char) => char.id === "11111111-1111-4111-8111-111111111111");
-    if (!currentRun) {
-      if (awaitingSelectedRun || isExecuting) {
+    if (!currentRun || !isExecuting) {
+      if (isExecuting || awaitingSelectedRun) {
         if (questor) questor.dialogue = isExecuting ? "SUBMITTING REQUEST..." : "AWAITING RUN STATE";
         if (claude) { claude.state = "idle"; claude.dialogue = "Waiting for persisted work..."; }
+        chars.filter((char) => char.role === "worker").forEach((char) => { char.state = "idle"; char.dialogue = null; char.bidSimilarity = undefined; });
+      } else {
+        if (questor) questor.dialogue = null;
+        if (claude) { claude.state = "idle"; claude.dialogue = "Awaiting quests..."; }
         chars.filter((char) => char.role === "worker").forEach((char) => { char.state = "idle"; char.dialogue = null; char.bidSimilarity = undefined; });
       }
       return;

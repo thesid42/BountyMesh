@@ -136,25 +136,11 @@ export default function Home() {
   );
 
   useEffect(() => {
-    const savedRun = sessionStorage.getItem("bountymesh_pending_run");
-    if (savedRun) {
-      try {
-        const pending = JSON.parse(savedRun) as { goal: string; rewardCents: number; idempotencyKey: string };
-        if (typeof pending.goal === "string" && pending.goal.length >= 10 && Number.isInteger(pending.rewardCents)
-          && pending.rewardCents >= 50 && pending.rewardCents <= 500 && typeof pending.idempotencyKey === "string" && pending.idempotencyKey) {
-          setPendingRun(pending);
-          setGoal(pending.goal);
-          setRewardCents(pending.rewardCents);
-          const savedActiveRunId = sessionStorage.getItem("bountymesh_active_run_id");
-          if (savedActiveRunId) setActiveRunId(savedActiveRunId);
-        }
-      } catch {
-        sessionStorage.removeItem("bountymesh_pending_run");
-        sessionStorage.removeItem("bountymesh_active_run_id");
-      }
-    } else {
-      sessionStorage.removeItem("bountymesh_active_run_id");
-    }
+    // Clear any stale pending run keys on initial page load so the app starts in a clean, idle state
+    sessionStorage.removeItem("bountymesh_pending_run");
+    sessionStorage.removeItem("bountymesh_active_run_id");
+    setPendingRun(null);
+    setActiveRunId(null);
 
     let active = true;
     void (async () => {
