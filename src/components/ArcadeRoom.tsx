@@ -740,16 +740,7 @@ export function ArcadeRoom({
         void ctx.resume();
       }
       arcadeAudio.playClick();
-      const greeting = "Adventurer's Guild voice narration active. Standing by for task briefings.";
-      setActiveSpeech({
-        charId: "11111111-1111-4111-8111-111111111111",
-        tag: "CLAUDE ORCHESTRATOR",
-        text: greeting,
-      });
-      void arcadeAudio.playNegotiationTurn({
-        speaker: "claude",
-        text: greeting,
-      });
+      arcadeAudio.playTalkChirp("claude");
     }
   };
 
@@ -765,14 +756,11 @@ export function ArcadeRoom({
 
   // Selected request identity wins over snapshot recency. Since snapshots are
   // capped, a missing selected row means "awaiting", never "not persisted".
-  // The guild room only engages in run simulation/narration when a run is actively executing.
   const hasSelectedIdentity = Boolean(activeRequestKey || activeRunId);
-  const currentRun = isExecuting
-    ? activeRequestKey
-      ? snapshot.runs.find((run) => run.id === activeRequestKey || run.idempotencyKey === activeRequestKey) ?? null
-      : activeRunId
-      ? snapshot.runs.find((run) => run.id === activeRunId) ?? null
-      : null
+  const currentRun = activeRequestKey
+    ? snapshot.runs.find((run) => run.id === activeRequestKey || run.idempotencyKey === activeRequestKey) ?? null
+    : activeRunId
+    ? snapshot.runs.find((run) => run.id === activeRunId) ?? null
     : null;
   const awaitingSelectedRun = isExecuting && hasSelectedIdentity && !currentRun;
   const currentBounty = snapshot.bounties.find((bounty) => bounty.runId === currentRun?.id) ?? null;
