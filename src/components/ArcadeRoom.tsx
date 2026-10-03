@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { arcadeAudio } from "@/lib/arcadeAudio";
+import { arcadeAudio, type ArcadeSpeaker } from "@/lib/arcadeAudio";
 import { drawGuildEnvironment, drawBiddingConnections } from "./ArcadeEnvironment";
 import {
   drawArcadeCharacter,
@@ -580,6 +580,7 @@ export function ArcadeRoom({
   const narrationRequestKey = useRef("");
   const narrationHeaders = useRef(authHeaders);
   narrationHeaders.current = authHeaders;
+  const isNarratingRef = useRef(false);
 
   // Interactive Hover & Modals State
   const [hoveredTarget, setHoveredTarget] = useState<InteractiveTarget | null>(null);
@@ -795,8 +796,10 @@ export function ArcadeRoom({
   useEffect(() => {
     if (!currentRun || !isExecuting) {
       if (isExecuting || awaitingSelectedRun) {
-        setActiveSpeech({ charId: "questor-player", text: "Awaiting selected run state from the persisted snapshot.", tag: "LIVE REQUEST" });
-        setGameLog(["REQUEST: Awaiting selected run state."]);
+        if (!isNarratingRef.current) {
+          setActiveSpeech({ charId: "questor-player", text: "Awaiting selected run state from the persisted snapshot.", tag: "LIVE REQUEST" });
+          setGameLog(["REQUEST: Awaiting selected run state."]);
+        }
       }
       return;
     }
@@ -808,7 +811,7 @@ export function ArcadeRoom({
   }, [currentRun?.id, currentRun?.status, isExecuting, runActivity.map((entry) => entry.id).join("|"), snapshot.agents, awaitingSelectedRun]);
 
   useEffect(() => {
-    if (!currentRun || !isExecuting) return;
+    if (!currentRun || !isExecuting || isNarratingRef.current) return;
     const latest = runActivity[runActivity.length - 1];
     if (latest) {
       const actor = snapshot.agents.find((agent) => agent.id === latest.actorId);
@@ -823,7 +826,7 @@ export function ArcadeRoom({
     const statusKey = currentRun
       ? currentRun.id
       : "";
-    if (!voiceEnabled || snapshot.config.mode !== "live" || !currentRun || !statusKey || !isExecuting) {
+    if (snapshot.config.mode !== "live" || !currentRun || !statusKey) {
       if (!voiceEnabled) arcadeAudio.stopSpeech();
       return;
     }
@@ -834,6 +837,7 @@ export function ArcadeRoom({
     let active = true;
     void (async () => {
       try {
+        isNarratingRef.current = true;
         const response = await fetch("/api/negotiate", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...narrationHeaders.current },
@@ -852,12 +856,16 @@ export function ArcadeRoom({
         const narration = payload as { success?: unknown; mode?: unknown; turns?: unknown };
         if (narration.success !== true || narration.mode !== "live" || !Array.isArray(narration.turns)) return;
         const turns = narration.turns;
+        const chars = charactersRef.current;
+
         for (const candidate of turns) {
           if (!active || !candidate || typeof candidate !== "object") return;
           const turn = candidate as {
             speaker?: unknown;
             speakerName?: unknown;
             text?: unknown;
+            dialogueBadge?: unknown;
+            color?: unknown;
             audioBase64?: unknown;
             audioMimeType?: unknown;
           };
@@ -865,7 +873,33 @@ export function ArcadeRoom({
           const speakerName = typeof turn.speakerName === "string" ? turn.speakerName : "";
           const text = typeof turn.text === "string" ? turn.text : "";
           if (!(["traveler", "claude", "gemini", "specialist"].includes(speaker) && speakerName && text && text.length <= 2000)) continue;
-          setActiveSpeech({ charId: currentRun.id, text, tag: speakerName });
+
+          // Find the speaking character on canvas to sync their dialogue bubble, facing, and badge
+          const speakingChar = chars.find((c) =>
+            speaker === "traveler"
+              ? c.role === "questor"
+              : speaker === "claude"
+              ? c.id.includes("1111")
+              : speaker === "gemini"
+              ? c.id.includes("2222")
+              : speaker === "specialist"
+              ? c.id.includes("3333")
+              : false
+          );
+
+          chars.forEach((c) => { c.dialogue = null; });
+          if (speakingChar) {
+            speakingChar.dialogue = (typeof turn.dialogueBadge === "string" && turn.dialogueBadge) ? turn.dialogueBadge : text.slice(0, 36) + "...";
+            speakingChar.dialogueColor = typeof turn.color === "string" ? turn.color : (speaker === "traveler" ? "#d4b86a" : speaker === "claude" ? "#8f79a6" : speaker === "gemini" ? "#6d8e9c" : "#84a96e");
+            if (speaker === "traveler") speakingChar.facing = "right";
+            else if (speaker === "claude") speakingChar.facing = "down";
+            else speakingChar.facing = "left";
+          }
+
+          // Active speech bottom modal bar text displays the exact text being spoken
+          setActiveSpeech({ charId: speakingChar ? speakingChar.id : currentRun.id, text, tag: speakerName });
+          arcadeAudio.playTalkChirp(speaker as ArcadeSpeaker);
+
           if (voiceEnabled) {
             await arcadeAudio.playNegotiationTurn({
               speaker: speaker as "traveler" | "claude" | "gemini" | "specialist",
@@ -874,15 +908,27 @@ export function ArcadeRoom({
               ...(typeof turn.audioMimeType === "string" ? { audioMimeType: turn.audioMimeType } : {}),
             });
           } else {
-            await new Promise((r) => setTimeout(r, Math.max(1800, Math.min(text.length * 28, 2800))));
+            // Natural reading duration matching text length
+            const duration = Math.max(2200, Math.min(text.length * 35, 4500));
+            await new Promise((r) => setTimeout(r, duration));
           }
+          await new Promise((r) => setTimeout(r, 350));
+        }
+
+        if (active) {
+          await new Promise((r) => setTimeout(r, 1200));
+          chars.forEach((c) => { c.dialogue = null; });
+          setActiveSpeech(null);
         }
       } catch {
         // Narration is optional; keep the persisted lifecycle UI available.
+      } finally {
+        isNarratingRef.current = false;
       }
     })();
     return () => {
       active = false;
+      isNarratingRef.current = false;
       controller.abort();
       arcadeAudio.stopSpeech();
     };
@@ -915,16 +961,21 @@ export function ArcadeRoom({
     const claude = chars.find((char) => char.id === "11111111-1111-4111-8111-111111111111");
     if (!currentRun || !isExecuting) {
       if (isExecuting || awaitingSelectedRun) {
-        if (questor) questor.dialogue = isExecuting ? "SUBMITTING REQUEST..." : "AWAITING RUN STATE";
-        if (claude) { claude.state = "idle"; claude.dialogue = "Waiting for persisted work..."; }
-        chars.filter((char) => char.role === "worker").forEach((char) => { char.state = "idle"; char.dialogue = null; char.bidSimilarity = undefined; });
+        if (!isNarratingRef.current) {
+          if (questor) questor.dialogue = isExecuting ? "SUBMITTING REQUEST..." : "AWAITING RUN STATE";
+          if (claude) { claude.state = "idle"; claude.dialogue = "Waiting for persisted work..."; }
+          chars.filter((char) => char.role === "worker").forEach((char) => { char.state = "idle"; char.dialogue = null; char.bidSimilarity = undefined; });
+        }
       } else {
-        if (questor) questor.dialogue = null;
-        if (claude) { claude.state = "idle"; claude.dialogue = "Awaiting quests..."; }
-        chars.filter((char) => char.role === "worker").forEach((char) => { char.state = "idle"; char.dialogue = null; char.bidSimilarity = undefined; });
+        if (!isNarratingRef.current) {
+          if (questor) questor.dialogue = null;
+          if (claude) { claude.state = "idle"; claude.dialogue = "Awaiting quests..."; }
+          chars.filter((char) => char.role === "worker").forEach((char) => { char.state = "idle"; char.dialogue = null; char.bidSimilarity = undefined; });
+        }
       }
       return;
     }
+    if (isNarratingRef.current) return;
     const worker = currentWorker ? chars.find((char) => char.id === currentWorker.id) : null;
     const latest = runActivity[runActivity.length - 1];
     if (questor) {

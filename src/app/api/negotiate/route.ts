@@ -90,6 +90,14 @@ function makeTurn(
   return { id: "turn-" + id, speaker, speakerName, voice, text: cleanText(text), dialogueBadge: cleanText(dialogueBadge, 64), color };
 }
 
+function cleanSentence(text: string, maxLen: number): string {
+  const cleaned = cleanText(text, maxLen + 20);
+  if (cleaned.length <= maxLen) return cleaned;
+  const sub = cleaned.slice(0, maxLen);
+  const lastSpace = sub.lastIndexOf(" ");
+  return (lastSpace > 20 ? sub.slice(0, lastSpace) : sub).trim() + "...";
+}
+
 function buildPersistedTurns(snapshot: Snapshot, run: Run): NegotiationTurn[] {
   const bounty = snapshot.bounties.find((item) => item.runId === run.id) ?? null;
   const worker = bounty?.workerId ? snapshot.agents.find((item) => item.id === bounty.workerId) ?? null : null;
@@ -103,10 +111,11 @@ function buildPersistedTurns(snapshot: Snapshot, run: Run): NegotiationTurn[] {
   const runState = run.status;
   const bountyState = bounty?.status ?? "not created";
   const match = bounty?.similarity;
-  const goal = cleanText(run.goal, 320);
+  const goal = cleanSentence(run.goal, 140);
+  const turn1Text = "The recorded request is: " + goal + (goal.endsWith(".") || goal.endsWith("...") ? "" : ".");
 
   return [
-    makeTurn(1, "traveler", "Traveler", "Kore", "The recorded request is: " + goal + ".", "Persisted request selected", "#d4b86a"),
+    makeTurn(1, "traveler", "Traveler", "Kore", turn1Text, "Persisted request selected", "#d4b86a"),
     makeTurn(2, "claude", "Claude Orchestrator", "Charon", "The persisted run status is " + runState + ". The bounty status is " + bountyState + ".", "Run state from database", "#8f79a6"),
     makeTurn(3, worker?.id === "22222222-2222-4222-8222-222222222222" ? "gemini" : "specialist", worker?.name ?? "Claude Orchestrator", worker ? "Puck" : "Charon",
       worker
