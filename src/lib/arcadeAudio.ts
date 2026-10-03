@@ -331,7 +331,7 @@ class ArcadeAudioEngine {
     const epoch = ++this.speechEpoch;
     this.cancelCurrentPlayback();
 
-    // If Gemini provided actual voice audio, play the live model speech!
+    // 1. If Gemini provided actual voice audio, play the live model speech!
     if (turn.audioBase64) {
       try {
         const played = await this.playBase64Audio(turn.audioBase64, turn.audioMimeType, epoch);
@@ -341,7 +341,33 @@ class ArcadeAudioEngine {
       }
     }
 
-    // Fallback to speech synthesis
+    // 2. Synthesize human-like speech via Gemini API endpoint
+    if (typeof window !== "undefined" && typeof fetch === "function") {
+      try {
+        const response = await fetch("/api/voice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            text: turn.text.slice(0, 240),
+            speaker: turn.speaker,
+          }),
+        });
+        if (response.ok) {
+          const data = (await response.json()) as { audioBase64?: string; mimeType?: string };
+          if (data.audioBase64 && this.speechIsActive(epoch)) {
+            const played = await this.playBase64Audio(data.audioBase64, data.mimeType || "audio/wav", epoch);
+            if (played || !this.speechIsActive(epoch)) return;
+          }
+        }
+      } catch {
+        // Fall back if network request fails
+      }
+    }
+
+    if (!this.speechIsActive(epoch)) return;
+
+    // Fallback to speech synthesis only if Gemini audio was unreachable
     await this.speakFallback(turn.speaker, turn.text, epoch);
   }
 

@@ -182,7 +182,12 @@ export async function POST(request: Request) {
     let hasAudio = false;
     if (apiKey) {
       const voices: NegotiationTurn["voice"][] = ["Kore", "Charon", "Puck", "Charon", "Kore"];
-      const audio = await Promise.all(turns.map((_, index) => synthesizeNegotiationVoice(trustedSpeechLine(index, run, snapshot), voices[index], apiKey)));
+      const audio = await Promise.all(
+        turns.map((turn, index) => {
+          const speechText = turn.text.length <= 240 ? turn.text : trustedSpeechLine(index, run, snapshot);
+          return synthesizeNegotiationVoice(speechText.slice(0, 240), voices[index], apiKey);
+        })
+      );
       audio.forEach((result, index) => {
         if (!result) return;
         turns[index].audioBase64 = result.data;
