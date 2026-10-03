@@ -8,6 +8,9 @@ import {
   drawCharacterDialogue,
   type ArcadeCharacter,
 } from "./ArcadeSprites";
+import { GuildNoticeBoardModal } from "./GuildNoticeBoardModal";
+import { GuildVaultModal } from "./GuildVaultModal";
+import { GuildBookshelfModal } from "./GuildBookshelfModal";
 import type { Agent, Bounty, Snapshot } from "@/lib/contracts";
 
 export type { ArcadeCharacter };
@@ -19,6 +22,190 @@ interface ArcadeRoomProps {
   isExecuting?: boolean;
   onSelectCharacter?: (agent: Agent | null, customChar?: ArcadeCharacter) => void;
   onSelectBounty?: (bounty: Bounty) => void;
+  onFillGoal?: (goal: string) => void;
+  onSwitchTab?: (tab: "arcade" | "bounties" | "agents" | "ledger") => void;
+}
+
+interface InteractiveTarget {
+  type: string;
+  id?: string;
+  name: string;
+  hint: string;
+  char?: ArcadeCharacter;
+  box?: { x: number; y: number; w: number; h: number };
+}
+
+function getInteractiveTarget(
+  mx: number,
+  my: number,
+  chars: ArcadeCharacter[]
+): InteractiveTarget | null {
+  // 1. Character hit test (centered around char.x, char.y - 18)
+  for (const c of chars) {
+    const dx = Math.abs(c.x - mx);
+    const dy = Math.abs(c.y - 18 - my);
+    if (dx < 26 && dy < 34) {
+      return {
+        type: "character",
+        id: c.id,
+        name: c.name,
+        hint: "Click to inspect agent dossier",
+        char: c,
+        box: { x: c.x - 22, y: c.y - 44, w: 44, h: 54 },
+      };
+    }
+  }
+
+  // 2. Guild Notice Board (x: 176..310, y: 14..92)
+  if (mx >= 176 && mx <= 310 && my >= 14 && my <= 92) {
+    return {
+      type: "notice-board",
+      name: "Guild Notice Board",
+      hint: "Click to browse quests & directives",
+      box: { x: 176, y: 14, w: 134, h: 78 },
+    };
+  }
+
+  // 3. Escrow Gold Vault (x: 772..934, y: 20..96)
+  if (mx >= 772 && mx <= 934 && my >= 20 && my <= 96) {
+    return {
+      type: "vault",
+      name: "Guild Escrow Vault",
+      hint: "Click to inspect treasury & payouts",
+      box: { x: 772, y: 20, w: 162, h: 76 },
+    };
+  }
+
+  // 4. Ancient Bookshelf & Codex (x: 572..704, y: 10..96)
+  if (mx >= 572 && mx <= 704 && my >= 10 && my <= 96) {
+    return {
+      type: "bookshelf",
+      name: "Ancient Library Bookshelf",
+      hint: "Click to read guild lore & codices",
+      box: { x: 572, y: 10, w: 132, h: 86 },
+    };
+  }
+
+  // 5. Hearth / Fireplace (x: 420..540, y: 12..104)
+  if (mx >= 420 && mx <= 540 && my >= 12 && my <= 104) {
+    return {
+      type: "fireplace",
+      name: "Guild Hearth Fire",
+      hint: "Click to stoke the hearth fire",
+      box: { x: 420, y: 12, w: 120, h: 92 },
+    };
+  }
+
+  // 6. Tavern Bar & Potions (x: 6..112, y: 110..290)
+  if (mx >= 6 && mx <= 112 && my >= 110 && my <= 290) {
+    return {
+      type: "tavern-bar",
+      name: "Tavern Bar & Alchemy Potions",
+      hint: "Click to inspect potions & brews",
+      box: { x: 6, y: 110, w: 106, h: 180 },
+    };
+  }
+
+  // 7. Research Desks:
+  // Gemini Desk (center: 820, 240, w: 72, h: 48)
+  if (mx >= 780 && mx <= 860 && my >= 212 && my <= 268) {
+    return {
+      type: "desk-gemini",
+      id: "22222222-2222-4222-8222-222222222222",
+      name: "Scholar's Research Desk",
+      hint: "Click to inspect Gemini Scholar",
+      box: { x: 784, y: 216, w: 72, h: 48 },
+    };
+  }
+  // Specialist Desk (center: 820, 370, w: 72, h: 48)
+  if (mx >= 780 && mx <= 860 && my >= 342 && my <= 398) {
+    return {
+      type: "desk-specialist",
+      id: "33333333-3333-4333-8333-333333333333",
+      name: "Ranger's Workstation",
+      hint: "Click to inspect Specialist Ranger",
+      box: { x: 784, y: 346, w: 72, h: 48 },
+    };
+  }
+  // Sentinel Desk (center: 170, 370, w: 72, h: 48)
+  if (mx >= 130 && mx <= 210 && my >= 342 && my <= 398) {
+    return {
+      type: "desk-sentinel",
+      id: "sentinel-worker",
+      name: "Sentinel's Watch Desk",
+      hint: "Click to inspect Code Sentinel",
+      box: { x: 134, y: 346, w: 72, h: 48 },
+    };
+  }
+
+  // 8. Strategy Table (Center Stage: Math.hypot((mx - 480)/110, (my - 255)/42) <= 1)
+  if (Math.hypot((mx - 480) / 110, (my - 255) / 42) <= 1) {
+    return {
+      type: "strategy-table",
+      name: "Guild Strategy Table",
+      hint: "Click to activate quest bidding simulation",
+      box: { x: 370, y: 213, w: 220, h: 84 },
+    };
+  }
+
+  // 9. Guild Entrance Doors (x: 94..174, y: 42..102)
+  if (mx >= 94 && mx <= 174 && my >= 42 && my <= 102) {
+    return {
+      type: "doors",
+      name: "Guild Entrance Doors",
+      hint: "Click to welcome traveler",
+      box: { x: 96, y: 44, w: 76, h: 56 },
+    };
+  }
+
+  return null;
+}
+
+function drawHoverCornerBrackets(
+  ctx: CanvasRenderingContext2D,
+  box: { x: number; y: number; w: number; h: number },
+  ticks: number
+): void {
+  ctx.save();
+  const pulse = Math.sin(ticks * 0.12) * 0.2 + 0.8;
+  ctx.strokeStyle = `rgba(212, 184, 106, ${pulse})`;
+  ctx.lineWidth = 1.5;
+
+  const bX = box.x - 2;
+  const bY = box.y - 2;
+  const bW = box.w + 4;
+  const bH = box.h + 4;
+  const corner = Math.min(10, Math.floor(Math.min(bW, bH) / 3));
+
+  // Top-left corner
+  ctx.beginPath();
+  ctx.moveTo(bX, bY + corner);
+  ctx.lineTo(bX, bY);
+  ctx.lineTo(bX + corner, bY);
+  ctx.stroke();
+
+  // Top-right corner
+  ctx.beginPath();
+  ctx.moveTo(bX + bW - corner, bY);
+  ctx.lineTo(bX + bW, bY);
+  ctx.lineTo(bX + bW, bY + corner);
+  ctx.stroke();
+
+  // Bottom-left corner
+  ctx.beginPath();
+  ctx.moveTo(bX, bY + bH - corner);
+  ctx.lineTo(bX, bY + bH);
+  ctx.lineTo(bX + corner, bY + bH);
+  ctx.stroke();
+
+  // Bottom-right corner
+  ctx.beginPath();
+  ctx.moveTo(bX + bW - corner, bY + bH);
+  ctx.lineTo(bX + bW, bY + bH);
+  ctx.lineTo(bX + bW, bY + bH - corner);
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 export function ArcadeRoom({
@@ -28,6 +215,8 @@ export function ArcadeRoom({
   isExecuting = false,
   onSelectCharacter,
   onSelectBounty,
+  onFillGoal,
+  onSwitchTab,
 }: ArcadeRoomProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [speed, setSpeed] = useState<1 | 2>(1);
@@ -35,10 +224,19 @@ export function ArcadeRoom({
   const [gameLog, setGameLog] = useState<string[]>([
     "The Guild Hall is open. Fireplace crackles softly.",
     "Claude Orchestrator reviews the quest parchment.",
-    "Ready: Click any character to inspect or click floor to walk.",
+    "Ready: Click any character, notice board, or object to interact.",
   ]);
   const [stagePhase, setStagePhase] = useState<"idle" | "entering" | "announcing" | "bidding" | "matched" | "executing" | "verified" | "paid">("idle");
   const [activeSpeech, setActiveSpeech] = useState<{ charId: string; text: string; tag: string } | null>(null);
+
+  // Interactive Hover & Modals State
+  const [hoveredTarget, setHoveredTarget] = useState<InteractiveTarget | null>(null);
+  const hoveredTargetRef = useRef<InteractiveTarget | null>(null);
+  hoveredTargetRef.current = hoveredTarget;
+
+  const [showNoticeBoardModal, setShowNoticeBoardModal] = useState(false);
+  const [showVaultModal, setShowVaultModal] = useState(false);
+  const [showBookshelfModal, setShowBookshelfModal] = useState(false);
 
   // Characters in Game State
   const charactersRef = useRef<ArcadeCharacter[]>([
@@ -313,6 +511,25 @@ export function ArcadeRoom({
     }
   }, [isExecuting, stagePhase, runArcadeSequence]);
 
+  // Track hover on interactive objects
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = 960 / rect.width;
+    const scaleY = 480 / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
+
+    const target = getInteractiveTarget(mx, my, charactersRef.current);
+    setHoveredTarget(target);
+  };
+
+  const handleCanvasMouseLeave = () => {
+    setHoveredTarget(null);
+  };
+
+  // Interactive Click on Canvas Objects
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -322,21 +539,85 @@ export function ArcadeRoom({
     const clickX = (e.clientX - rect.left) * scaleX;
     const clickY = (e.clientY - rect.top) * scaleY;
 
-    // Check if clicked on a character
-    const clickedChar = charactersRef.current.find((c) => {
-      const dx = Math.abs(c.x - clickX);
-      const dy = Math.abs(c.y - 20 - clickY);
-      return dx < 36 && dy < 44;
-    });
+    const target = getInteractiveTarget(clickX, clickY, charactersRef.current);
 
-    if (clickedChar) {
-      arcadeAudio.playClick();
-      const realAgent = snapshot.agents.find((a) => a.id === clickedChar.id) || null;
-      onSelectCharacter?.(realAgent, clickedChar);
-      return;
+    if (target) {
+      if (target.type === "character" && target.char) {
+        arcadeAudio.playClick();
+        const realAgent = snapshot.agents.find((a) => a.id === target.char?.id) || null;
+        onSelectCharacter?.(realAgent, target.char);
+        addLog(`Opened character dossier: ${target.char.name}.`);
+        return;
+      }
+
+      if (target.type === "notice-board") {
+        arcadeAudio.playPaper();
+        setShowNoticeBoardModal(true);
+        addLog("Inspecting Guild Notice Board.");
+        return;
+      }
+
+      if (target.type === "vault") {
+        arcadeAudio.playChest();
+        setShowVaultModal(true);
+        addLog("Auditing the Guild Escrow Vault.");
+        return;
+      }
+
+      if (target.type === "bookshelf") {
+        arcadeAudio.playBook();
+        setShowBookshelfModal(true);
+        addLog("Reading ancient codices in the guild library.");
+        return;
+      }
+
+      if (target.type === "fireplace") {
+        arcadeAudio.playHearth();
+        addLog("You stoke the hearth fire. Warm glowing embers crackle.");
+        setActiveSpeech({ charId: "hearth", text: "The hearth fire crackles with comforting warmth.", tag: "GUILD HEARTH" });
+        return;
+      }
+
+      if (target.type === "tavern-bar") {
+        arcadeAudio.playPotion();
+        addLog("You inspect the alchemical potion vials and fresh cider kegs.");
+        setActiveSpeech({ charId: "tavern", text: "Health draughts, mana vials, and fresh oak-cask cider.", tag: "TAVERN BAR" });
+        return;
+      }
+
+      if (target.type === "strategy-table") {
+        arcadeAudio.playClick();
+        if (stagePhase === "idle") {
+          runArcadeSequence();
+        }
+        addLog("Activated the strategy table for quest dispatch simulation.");
+        return;
+      }
+
+      if (target.type.startsWith("desk-")) {
+        arcadeAudio.playClick();
+        const deskAgent = snapshot.agents.find((a) => a.id === target.id) || null;
+        const deskChar = charactersRef.current.find((c) => c.id === target.id);
+        onSelectCharacter?.(deskAgent, deskChar);
+        addLog(`Inspecting ${target.name}.`);
+        return;
+      }
+
+      if (target.type === "doors") {
+        arcadeAudio.playWarp();
+        const questor = charactersRef.current.find((c) => c.role === "questor");
+        if (questor && stagePhase === "idle") {
+          questor.targetX = 130;
+          questor.targetY = 110;
+          questor.state = "walking";
+          questor.facing = "up";
+          addLog("Traveler walked to the guild entrance.");
+        }
+        return;
+      }
     }
 
-    // Move Questor to clicked location
+    // Move Questor to clicked location on floor
     const questor = charactersRef.current.find((c) => c.role === "questor");
     if (questor && stagePhase === "idle") {
       arcadeAudio.playClick();
@@ -419,6 +700,12 @@ export function ArcadeRoom({
         }
       });
 
+      // 4. Interactive Hover Highlight Brackets on Canvas
+      const hovered = hoveredTargetRef.current;
+      if (hovered && hovered.box) {
+        drawHoverCornerBrackets(ctx, hovered.box, ticks);
+      }
+
       ctx.textAlign = "left";
     };
 
@@ -468,10 +755,15 @@ export function ArcadeRoom({
       </div>
 
       {/* Living Interactive Game Stage Canvas */}
-      <div className="arcade-stage-wrap">
+      <div
+        className="arcade-stage-wrap"
+        style={{ cursor: hoveredTarget ? "pointer" : "crosshair" }}
+      >
         <canvas
           ref={canvasRef}
           onClick={handleCanvasClick}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseLeave={handleCanvasMouseLeave}
           className="arcade-canvas"
         />
 
@@ -484,23 +776,71 @@ export function ArcadeRoom({
               onClick={() => setActiveSpeech(null)}
               className="dialogue-dismiss"
             >
-              [ESC / ×]
+              [ESC / x]
             </button>
           </div>
         )}
-      </div>
 
-      {/* Event Stream Ticker */}
-      <div className="arcade-console-log-ticker">
-        <span className="log-title">EVENT STREAM:</span>
-        <div className="log-scroller">
-          {gameLog.slice(0, 3).map((item, idx) => (
-            <span key={idx} className="log-entry">
-              {item}
-            </span>
-          ))}
+        {/* Dynamic Contextual Hint Overlay at bottom of canvas */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: 8,
+            left: 16,
+            right: 16,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            pointerEvents: "none",
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+          }}
+        >
+          <span style={{ color: hoveredTarget ? "var(--accent-gold)" : "var(--text-dim)", fontWeight: 600 }}>
+            {hoveredTarget
+              ? `${hoveredTarget.name} · ${hoveredTarget.hint}`
+              : "Click the Notice Board, Vault, Bookshelf, or characters to interact"}
+          </span>
+          <span style={{ color: "var(--text-dim)", fontSize: 10 }}>
+            Point & Click
+          </span>
         </div>
       </div>
+
+      {/* Interactive Notice Board Modal */}
+      {showNoticeBoardModal && (
+        <GuildNoticeBoardModal
+          bounties={snapshot.bounties}
+          onClose={() => setShowNoticeBoardModal(false)}
+          onSelectBounty={(b) => {
+            setShowNoticeBoardModal(false);
+            onSelectBounty?.(b);
+          }}
+          onLoadGoal={(text) => {
+            setShowNoticeBoardModal(false);
+            onFillGoal?.(text);
+          }}
+        />
+      )}
+
+      {/* Interactive Escrow Vault Modal */}
+      {showVaultModal && (
+        <GuildVaultModal
+          ledger={snapshot.ledger}
+          bounties={snapshot.bounties}
+          providerName={snapshot.config.payments}
+          onClose={() => setShowVaultModal(false)}
+          onViewFullLedger={() => {
+            setShowVaultModal(false);
+            onSwitchTab?.("ledger");
+          }}
+        />
+      )}
+
+      {/* Interactive Library Bookshelf Modal */}
+      {showBookshelfModal && (
+        <GuildBookshelfModal onClose={() => setShowBookshelfModal(false)} />
+      )}
     </div>
   );
 }

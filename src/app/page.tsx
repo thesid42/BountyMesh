@@ -261,6 +261,8 @@ export default function Home() {
               isExecuting={submitting}
               onSelectCharacter={(agent, customChar) => setInspectedAgent({ agent, char: customChar })}
               onSelectBounty={(bounty) => setInspectedBounty(bounty)}
+              onFillGoal={(text) => setGoal(text)}
+              onSwitchTab={(tab) => setActiveTab(tab)}
             />
 
             {/* Quest Notice Board Creator */}

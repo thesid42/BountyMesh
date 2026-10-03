@@ -472,7 +472,6 @@ a {
   background: var(--bg-input);
   overflow: hidden;
   user-select: none;
-  border-bottom: 2px solid var(--border-outer);
 }
 
 .arcade-canvas {
