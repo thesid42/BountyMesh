@@ -255,13 +255,17 @@ class ArcadeAudioEngine {
     return new Promise((resolve) => {
       const utterance = new SpeechSynthesisUtterance(text);
       let settled = false;
+      let watchdog: ReturnType<typeof setTimeout> | undefined;
+
       const finish = () => {
         if (settled) return;
         settled = true;
+        if (watchdog) clearTimeout(watchdog);
         if (this.pendingSpeechResolve === finish) this.pendingSpeechResolve = null;
         resolve();
       };
       this.pendingSpeechResolve = finish;
+      watchdog = setTimeout(finish, Math.max(2500, Math.min(text.length * 85, 8000)));
 
       switch (speaker) {
         case "claude":
@@ -308,6 +312,7 @@ class ArcadeAudioEngine {
 
       if (!this.speechIsActive(epoch)) { finish(); return; }
       try {
+        window.speechSynthesis.resume();
         window.speechSynthesis.speak(utterance);
       } catch {
         finish();

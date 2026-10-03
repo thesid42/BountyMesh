@@ -55,33 +55,15 @@ interface GuildStation {
   arrivalChatter?: string[];
 }
 
-const FLOOR_MIN_X = 165;
+const FLOOR_MIN_X = 160;
 const FLOOR_MAX_X = 770;
-const FLOOR_MIN_Y = 198;
+const FLOOR_MIN_Y = 145;
 const FLOOR_MAX_Y = 415;
 
 const TABLE_CENTER_X = 480;
-const TABLE_CENTER_Y = 260;
-const TABLE_RADIUS_X = 115;
-const TABLE_RADIUS_Y = 46;
-
-interface RectObstacle {
-  xMin: number;
-  xMax: number;
-  yMin: number;
-  yMax: number;
-}
-
-const DESK_OBSTACLES: RectObstacle[] = [
-  // Gemini scholar desk
-  { xMin: 775, xMax: 860, yMin: 215, yMax: 268 },
-  // Specialist ranger desk
-  { xMin: 775, xMax: 860, yMin: 345, yMax: 398 },
-  // Sentinel watch desk
-  { xMin: 130, xMax: 215, yMin: 345, yMax: 398 },
-  // Tavern bar counter
-  { xMin: 0, xMax: 155, yMin: 195, yMax: 300 },
-];
+const TABLE_CENTER_Y = 255;
+const TABLE_RADIUS_X = 105;
+const TABLE_RADIUS_Y = 42;
 
 function pathIntersectsTable(
   x1: number,
@@ -89,8 +71,8 @@ function pathIntersectsTable(
   x2: number,
   y2: number
 ): boolean {
-  const rx = TABLE_RADIUS_X + 16;
-  const ry = TABLE_RADIUS_Y + 16;
+  const rx = TABLE_RADIUS_X + 14;
+  const ry = TABLE_RADIUS_Y + 14;
   const ax = (x1 - TABLE_CENTER_X) / rx;
   const ay = (y1 - TABLE_CENTER_Y) / ry;
   const bx = (x2 - TABLE_CENTER_X) / rx;
@@ -115,36 +97,39 @@ function computeRouteWaypoint(
 ): { x: number; y: number } | null {
   if (!pathIntersectsTable(startX, startY, destX, destY)) return null;
 
-  // Crossing vertically across table (North <-> South)
-  if (
-    (startY < TABLE_CENTER_Y && destY > TABLE_CENTER_Y) ||
-    (startY > TABLE_CENTER_Y && destY < TABLE_CENTER_Y)
-  ) {
-    const midX = (startX + destX) / 2;
-    const detourX = midX < TABLE_CENTER_X ? 335 : 625;
-    return { x: detourX, y: TABLE_CENTER_Y };
-  }
+  const dx = Math.abs(destX - startX);
+  const dy = Math.abs(destY - startY);
 
-  // Crossing horizontally across table (West <-> East)
-  if (
-    (startX < TABLE_CENTER_X && destX > TABLE_CENTER_X) ||
-    (startX > TABLE_CENTER_X && destX < TABLE_CENTER_X)
-  ) {
-    const midY = (startY + destY) / 2;
-    const detourY = midY < TABLE_CENTER_Y ? 202 : 330;
+  // If path is mainly vertical across table:
+  if (dy >= dx) {
+    const avgX = (startX + destX) / 2;
+    const detourX = avgX < TABLE_CENTER_X ? 345 : 615;
+    return { x: detourX, y: TABLE_CENTER_Y };
+  } else {
+    // If path is mainly horizontal across table:
+    const avgY = (startY + destY) / 2;
+    const detourY = avgY < TABLE_CENTER_Y ? 160 : 345;
     return { x: TABLE_CENTER_X, y: detourY };
   }
-
-  return null;
 }
 
+const OPEN_WANDER_SPOTS = [
+  { x: 340, y: 155, facing: "down" as const },
+  { x: 550, y: 155, facing: "down" as const },
+  { x: 260, y: 280, facing: "right" as const },
+  { x: 700, y: 280, facing: "left" as const },
+  { x: 300, y: 350, facing: "up" as const },
+  { x: 480, y: 360, facing: "up" as const },
+  { x: 650, y: 350, facing: "up" as const },
+];
+
 const GUILD_STATIONS: GuildStation[] = [
-  // 1. Notice Board (x: 245, y: 202) - standing comfortably in front of board, looking up
+  // 1. Notice Board (x: 245, y: 155) - standing on floor looking up
   {
     id: "notice-board",
     name: "Guild Notice Board",
     x: 245,
-    y: 202,
+    y: 155,
     facing: "up",
     stationType: "notice-board",
     preferredCharIds: ["questor-player", "sentinel-worker"],
@@ -153,12 +138,12 @@ const GUILD_STATIONS: GuildStation[] = [
       "Checking reward tiers on the notice board...",
     ],
   },
-  // 2. Guild Hearth Fireplace West (x: 430, y: 202)
+  // 2. Guild Hearth Fireplace West (x: 430, y: 155)
   {
     id: "hearth-west",
     name: "Guild Hearth Fireplace",
     x: 430,
-    y: 202,
+    y: 155,
     facing: "right",
     stationType: "hearth",
     preferredCharIds: ["11111111-1111-4111-8111-111111111111", "questor-player"],
@@ -167,12 +152,12 @@ const GUILD_STATIONS: GuildStation[] = [
       "Warm embers crackling softly in the grate...",
     ],
   },
-  // 3. Guild Hearth Fireplace East (x: 530, y: 202)
+  // 3. Guild Hearth Fireplace East (x: 530, y: 155)
   {
     id: "hearth-east",
     name: "Guild Hearth Fireplace",
     x: 530,
-    y: 202,
+    y: 155,
     facing: "left",
     stationType: "hearth",
     preferredCharIds: ["33333333-3333-4333-8333-333333333333", "questor-player"],
@@ -181,12 +166,12 @@ const GUILD_STATIONS: GuildStation[] = [
       "Comforting hearth warmth radiates through the hall...",
     ],
   },
-  // 4. Ancient Library Bookshelf (x: 640, y: 202)
+  // 4. Ancient Library Bookshelf (x: 640, y: 155)
   {
     id: "library-main",
     name: "Ancient Library Bookshelf",
     x: 640,
-    y: 202,
+    y: 155,
     facing: "up",
     stationType: "bookshelf",
     preferredCharIds: ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"],
@@ -196,12 +181,12 @@ const GUILD_STATIONS: GuildStation[] = [
       "Consulting ancient algorithmic codices...",
     ],
   },
-  // 5. Guild Escrow Vault (x: 765, y: 202)
+  // 5. Guild Escrow Vault (x: 755, y: 155)
   {
     id: "vault",
     name: "Guild Escrow Vault",
-    x: 765,
-    y: 202,
+    x: 755,
+    y: 155,
     facing: "up",
     stationType: "vault",
     preferredCharIds: ["11111111-1111-4111-8111-111111111111", "questor-player"],
@@ -210,11 +195,11 @@ const GUILD_STATIONS: GuildStation[] = [
       "Ledger balances match vault reserve gold.",
     ],
   },
-  // 6. Tavern Bar Counter (x: 180, y: 250)
+  // 6. Tavern Bar Counter (x: 185, y: 250)
   {
     id: "tavern-bar",
     name: "Tavern Bar & Cider Kegs",
-    x: 180,
+    x: 185,
     y: 250,
     facing: "left",
     stationType: "bar",
@@ -225,12 +210,12 @@ const GUILD_STATIONS: GuildStation[] = [
       "Checking alchemical stamina draughts...",
     ],
   },
-  // 7. Strategy Table Stations (surrounding oak table at 480, 260)
+  // 7. Strategy Table Stations (surrounding oak table at 480, 255)
   {
     id: "table-north",
     name: "Strategy Table (North)",
     x: 480,
-    y: 205,
+    y: 190,
     facing: "down",
     stationType: "table",
     preferredCharIds: ["11111111-1111-4111-8111-111111111111"],
@@ -243,7 +228,7 @@ const GUILD_STATIONS: GuildStation[] = [
     id: "table-south",
     name: "Strategy Table (South)",
     x: 480,
-    y: 325,
+    y: 320,
     facing: "up",
     stationType: "table",
     preferredCharIds: ["33333333-3333-4333-8333-333333333333", "questor-player"],
@@ -256,7 +241,7 @@ const GUILD_STATIONS: GuildStation[] = [
     id: "table-west",
     name: "Strategy Table (West)",
     x: 345,
-    y: 260,
+    y: 255,
     facing: "right",
     stationType: "table",
     preferredCharIds: ["questor-player", "sentinel-worker"],
@@ -269,7 +254,7 @@ const GUILD_STATIONS: GuildStation[] = [
     id: "table-east",
     name: "Strategy Table (East)",
     x: 615,
-    y: 260,
+    y: 255,
     facing: "left",
     stationType: "table",
     preferredCharIds: ["22222222-2222-4222-8222-222222222222"],
@@ -282,7 +267,7 @@ const GUILD_STATIONS: GuildStation[] = [
   {
     id: "desk-gemini",
     name: "Scholar's Research Desk",
-    x: 745,
+    x: 735,
     y: 245,
     facing: "right",
     stationType: "desk",
@@ -295,7 +280,7 @@ const GUILD_STATIONS: GuildStation[] = [
   {
     id: "desk-specialist",
     name: "Ranger's Workstation",
-    x: 745,
+    x: 735,
     y: 370,
     facing: "right",
     stationType: "desk",
@@ -323,7 +308,7 @@ const GUILD_STATIONS: GuildStation[] = [
     id: "lounge-west",
     name: "Tavern Hearthside Lounge",
     x: 300,
-    y: 345,
+    y: 350,
     facing: "right",
     stationType: "table",
     preferredCharIds: ["questor-player", "33333333-3333-4333-8333-333333333333"],
@@ -336,7 +321,7 @@ const GUILD_STATIONS: GuildStation[] = [
     id: "lounge-east",
     name: "Guild Research Alcove",
     x: 660,
-    y: 345,
+    y: 350,
     facing: "left",
     stationType: "table",
     preferredCharIds: ["22222222-2222-4222-8222-222222222222", "11111111-1111-4111-8111-111111111111"],
@@ -754,6 +739,16 @@ export function ArcadeRoom({
         void ctx.resume();
       }
       arcadeAudio.playClick();
+      const greeting = "Adventurer's Guild voice narration active. Standing by for task briefings.";
+      setActiveSpeech({
+        charId: "11111111-1111-4111-8111-111111111111",
+        tag: "CLAUDE ORCHESTRATOR",
+        text: greeting,
+      });
+      void arcadeAudio.playNegotiationTurn({
+        speaker: "claude",
+        text: greeting,
+      });
     }
   };
 
@@ -989,6 +984,23 @@ export function ArcadeRoom({
         const realAgent = snapshot.agents.find((a) => a.id === target.char?.id) || null;
         onSelectCharacter?.(realAgent, target.char);
         addLog(`Opened character dossier: ${target.char.name}.`);
+        if (voiceEnabled) {
+          const charName = target.char.name;
+          const greeting =
+            target.char.role === "orchestrator"
+              ? "Claude Orchestrator ready. Standing by to review and route quest specifications."
+              : target.char.role === "questor"
+              ? "Traveler logged in. Ready to fund verified escrow for autonomous deliverables."
+              : `${charName} ready for subcontracting. Specialized capabilities online.`;
+          void arcadeAudio.playNegotiationTurn({
+            speaker:
+              target.char.role === "questor" ? "traveler" :
+              target.char.avatarType === "claude" ? "claude" :
+              target.char.avatarType === "gemini" ? "gemini" :
+              target.char.avatarType === "specialist" ? "specialist" : "sentinel",
+            text: greeting,
+          });
+        }
         return;
       }
 
@@ -1185,6 +1197,15 @@ export function ArcadeRoom({
                 candidatePool.push({ x: homeX, y: homeY, facing: homeFacing, weight: 3 });
               }
 
+              // Guarantee candidatePool is never empty so characters constantly explore the room
+              if (candidatePool.length <= 1) {
+                OPEN_WANDER_SPOTS.forEach((spot) => {
+                  if (Math.hypot(char.x - spot.x, char.y - spot.y) > 30) {
+                    candidatePool.push({ x: spot.x, y: spot.y, facing: spot.facing, weight: 2 });
+                  }
+                });
+              }
+
               if (candidatePool.length > 0) {
                 const totalWeight = candidatePool.reduce((sum, c) => sum + c.weight, 0);
                 let rand = Math.random() * totalWeight;
@@ -1250,30 +1271,19 @@ export function ArcadeRoom({
               if (dot < 0) {
                 vx -= dot * unx;
                 vy -= dot * uny;
+                const tx = -uny;
+                const ty = unx;
+                const slip = 0.5 * Math.min(moveSpeed, 2.0);
+                vx += tx * slip;
+                vy += ty * slip;
               }
             }
 
-            // 2. Sliding along desk rectangular obstacles
-            DESK_OBSTACLES.forEach((box) => {
-              if (nextX >= box.xMin && nextX <= box.xMax && nextY >= box.yMin && nextY <= box.yMax) {
-                const dLeft = Math.abs(char.x - box.xMin);
-                const dRight = Math.abs(char.x - box.xMax);
-                const dTop = Math.abs(char.y - box.yMin);
-                const dBottom = Math.abs(char.y - box.yMax);
-                const minD = Math.min(dLeft, dRight, dTop, dBottom);
-                if (minD === dLeft || minD === dRight) {
-                  vx = 0;
-                } else {
-                  vy = 0;
-                }
-              }
-            });
-
-            // 3. Apply position clamped within safe floor boundaries
+            // 2. Apply position clamped within safe floor boundaries
             char.x = Math.max(FLOOR_MIN_X, Math.min(FLOOR_MAX_X, char.x + vx));
             char.y = Math.max(FLOOR_MIN_Y, Math.min(FLOOR_MAX_Y, char.y + vy));
 
-            // 4. Update facing based on actual movement vector
+            // 3. Update facing based on actual movement vector with hysteresis
             if (Math.abs(vx) > Math.abs(vy) + 0.1) {
               char.facing = vx > 0 ? "right" : "left";
             } else if (Math.abs(vy) > 0.1) {
@@ -1295,12 +1305,12 @@ export function ArcadeRoom({
               char.lastPosY = char.y;
             }
 
-            // If completely blocked for more than 1.6s, recover cleanly to idle
-            if (char.stuckTimer > 1.6) {
+            // If completely blocked for more than 1.4s, recover cleanly to idle
+            if (char.stuckTimer > 1.4) {
               char.stuckTimer = 0;
               char.wanderWaypoint = null;
               char.state = "idle";
-              char.idlePauseTimer = 1.5 + Math.random() * 2.0;
+              char.idlePauseTimer = 1.0 + Math.random() * 2.0;
             }
           } else {
             // Reached destination!
@@ -1449,6 +1459,12 @@ export function ArcadeRoom({
                   speaker.avatarType === "specialist" ? "specialist" :
                   speaker.avatarType === "sentinel" ? "sentinel" : "traveler";
                 arcadeAudio.playTalkChirp(speakerKey);
+                if (voiceEnabled) {
+                  void arcadeAudio.playNegotiationTurn({
+                    speaker: speakerKey,
+                    text: remark,
+                  });
+                }
               }
             }
           }
