@@ -145,11 +145,16 @@ export default function Home() {
           setPendingRun(pending);
           setGoal(pending.goal);
           setRewardCents(pending.rewardCents);
+          const savedActiveRunId = sessionStorage.getItem("bountymesh_active_run_id");
+          if (savedActiveRunId) setActiveRunId(savedActiveRunId);
         }
-      } catch { sessionStorage.removeItem("bountymesh_pending_run"); }
+      } catch {
+        sessionStorage.removeItem("bountymesh_pending_run");
+        sessionStorage.removeItem("bountymesh_active_run_id");
+      }
+    } else {
+      sessionStorage.removeItem("bountymesh_active_run_id");
     }
-    const savedActiveRunId = sessionStorage.getItem("bountymesh_active_run_id");
-    if (savedActiveRunId) setActiveRunId(savedActiveRunId);
 
     let active = true;
     void (async () => {
@@ -355,6 +360,7 @@ export default function Home() {
 
       setPendingRun(null);
       sessionStorage.removeItem("bountymesh_pending_run");
+      sessionStorage.removeItem("bountymesh_active_run_id");
       setTerminalRunFailure(false);
       setActionSuccess(true);
       setGoal("");
@@ -386,8 +392,10 @@ export default function Home() {
 
   const startNewRequest = () => {
     setPendingRun(null);
+    setActiveRunId(null);
     setTerminalRunFailure(false);
     sessionStorage.removeItem("bountymesh_pending_run");
+    sessionStorage.removeItem("bountymesh_active_run_id");
     setError("");
     setActionSuccess(false);
   };

@@ -769,12 +769,13 @@ export function ArcadeRoom({
 
   // Selected request identity wins over snapshot recency. Since snapshots are
   // capped, a missing selected row means "awaiting", never "not persisted".
+  // Only evaluate a current run if an active request or run was explicitly initiated.
   const hasSelectedIdentity = Boolean(activeRequestKey || activeRunId);
   const currentRun = activeRequestKey
-    ? snapshot.runs.find((run) => run.idempotencyKey === activeRequestKey) ?? null
+    ? snapshot.runs.find((run) => run.id === activeRequestKey || run.idempotencyKey === activeRequestKey) ?? null
     : activeRunId
       ? snapshot.runs.find((run) => run.id === activeRunId) ?? null
-      : snapshot.runs.slice().sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] ?? null;
+      : null;
   const awaitingSelectedRun = hasSelectedIdentity && !currentRun;
   const currentBounty = snapshot.bounties.find((bounty) => bounty.runId === currentRun?.id) ?? null;
   const currentWorker = snapshot.agents.find((agent) => agent.id === currentBounty?.workerId) ?? null;
@@ -782,7 +783,7 @@ export function ArcadeRoom({
   const actualPhase: ArcadePhase = !currentRun
     ? isExecuting || awaitingSelectedRun ? "planning" : "idle"
     : currentBounty?.status === "paid" ? "paid"
-      : currentBounty?.status === "failed" || currentRun.status === "failed" && currentBounty?.status !== "settling" ? "failed"
+      : currentBounty?.status === "failed" || (currentRun.status === "failed" && currentBounty?.status !== "settling") ? "failed"
         : !currentBounty ? "planning"
           : currentBounty.status === "funding" ? "funding"
             : currentBounty.status === "open" ? "bidding"
@@ -893,17 +894,21 @@ export function ArcadeRoom({
   const lastPaidBountyId = useRef<string | null>(null);
   useEffect(() => {
     if (currentBounty?.status === "paid" && lastPaidBountyId.current !== currentBounty.id) {
+      if (lastPaidBountyId.current !== null) {
+        arcadeAudio.playPayout();
+      }
       lastPaidBountyId.current = currentBounty.id;
-      arcadeAudio.playPayout();
     }
   }, [currentBounty?.id, currentBounty?.status]);
 
   const lastFailedBountyId = useRef<string | null>(null);
   useEffect(() => {
     if (currentBounty?.status === "failed" && lastFailedBountyId.current !== currentBounty.id) {
+      if (lastFailedBountyId.current !== null) {
+        arcadeAudio.playReject();
+        setTimeout(() => arcadeAudio.playRefund(), 400);
+      }
       lastFailedBountyId.current = currentBounty.id;
-      arcadeAudio.playReject();
-      setTimeout(() => arcadeAudio.playRefund(), 400);
     }
   }, [currentBounty?.id, currentBounty?.status]);
 
