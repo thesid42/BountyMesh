@@ -7,6 +7,7 @@ import {
   drawArcadeCharacter,
   drawCharacterDialogue,
   type ArcadeCharacter,
+  type ArcadeFacing,
 } from "./ArcadeSprites";
 import { GuildNoticeBoardModal } from "./GuildNoticeBoardModal";
 import { GuildVaultModal } from "./GuildVaultModal";
@@ -16,12 +17,15 @@ import type { Agent, Bounty, Snapshot } from "@/lib/contracts";
 
 export type { ArcadeCharacter };
 
+export const FAILED_DEMO_GOAL = "Provide a verified cryptographic proof and financial benchmark audit";
+
 interface ArcadeRoomProps {
   snapshot: Snapshot;
   activeGoal?: string;
   rewardCents?: number;
   isExecuting?: boolean;
   triggerSequenceKey?: number;
+  shouldFail?: boolean;
   onSelectCharacter?: (agent: Agent | null, customChar?: ArcadeCharacter) => void;
   onSelectBounty?: (bounty: Bounty) => void;
   onFillGoal?: (goal: string) => void;
@@ -36,6 +40,272 @@ interface InteractiveTarget {
   char?: ArcadeCharacter;
   box?: { x: number; y: number; w: number; h: number };
 }
+
+interface GuildStation {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  facing: ArcadeFacing;
+  stationType: "bookshelf" | "hearth" | "bar" | "table" | "desk" | "notice-board" | "vault";
+  preferredCharIds?: string[];
+  arrivalChatter?: string[];
+}
+
+const FLOOR_MIN_X = 155;
+const FLOOR_MAX_X = 825;
+const FLOOR_MIN_Y = 155;
+const FLOOR_MAX_Y = 415;
+
+const TABLE_CENTER_X = 480;
+const TABLE_CENTER_Y = 255;
+const TABLE_RADIUS_X = 92;
+const TABLE_RADIUS_Y = 36;
+
+function pathIntersectsTable(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): boolean {
+  const rx = TABLE_RADIUS_X + 12;
+  const ry = TABLE_RADIUS_Y + 12;
+  const ax = (x1 - TABLE_CENTER_X) / rx;
+  const ay = (y1 - TABLE_CENTER_Y) / ry;
+  const bx = (x2 - TABLE_CENTER_X) / rx;
+  const by = (y2 - TABLE_CENTER_Y) / ry;
+
+  const vx = bx - ax;
+  const vy = by - ay;
+  const lenSq = vx * vx + vy * vy;
+  if (lenSq === 0) return ax * ax + ay * ay < 1.0;
+
+  const t = Math.max(0, Math.min(1, -(ax * vx + ay * vy) / lenSq));
+  const px = ax + t * vx;
+  const py = ay + t * vy;
+  return px * px + py * py < 1.0;
+}
+
+const GUILD_STATIONS: GuildStation[] = [
+  // 1. Notice Board (x: 245, y: 160) - standing on floor in front of board, looking up
+  {
+    id: "notice-board",
+    name: "Guild Notice Board",
+    x: 245,
+    y: 162,
+    facing: "up",
+    stationType: "notice-board",
+    preferredCharIds: ["questor-player", "sentinel-worker"],
+    arrivalChatter: [
+      "Inspecting newly posted guild directives...",
+      "Checking reward tiers on the notice board...",
+    ],
+  },
+  // 2. Guild Hearth Fireplace (x: 480, y: 162) - standing safely on floor in front of fireplace
+  {
+    id: "hearth",
+    name: "Guild Hearth Fireplace",
+    x: 480,
+    y: 162,
+    facing: "up",
+    stationType: "hearth",
+    preferredCharIds: [
+      "11111111-1111-4111-8111-111111111111",
+      "33333333-3333-4333-8333-333333333333",
+      "questor-player",
+    ],
+    arrivalChatter: [
+      "Warming hands by the hearth fire...",
+      "Warm embers crackling softly in the grate...",
+      "Resting before the next bounty assignment...",
+    ],
+  },
+  // 3. Ancient Library Bookshelf (x: 638, y: 162) - in front of bookshelf codices
+  {
+    id: "library-main",
+    name: "Ancient Library Bookshelf",
+    x: 638,
+    y: 162,
+    facing: "up",
+    stationType: "bookshelf",
+    preferredCharIds: ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"],
+    arrivalChatter: [
+      "Referencing foundational agent codices...",
+      "Reviewing prompt engineering scrolls...",
+      "Consulting ancient algorithmic codices...",
+    ],
+  },
+  // 4. Guild Escrow Vault (x: 810, y: 162) - in front of gold vault
+  {
+    id: "vault",
+    name: "Guild Escrow Vault",
+    x: 810,
+    y: 162,
+    facing: "up",
+    stationType: "vault",
+    preferredCharIds: ["11111111-1111-4111-8111-111111111111", "questor-player"],
+    arrivalChatter: [
+      "Verifying cryptographic escrow balances...",
+      "Ledger balances match vault reserve gold.",
+    ],
+  },
+  // 5. Tavern Bar Counter (x: 165, y: 245) - standing right at the oak bar, facing drinks
+  {
+    id: "tavern-bar",
+    name: "Tavern Bar & Cider Kegs",
+    x: 165,
+    y: 245,
+    facing: "left",
+    stationType: "bar",
+    preferredCharIds: ["questor-player", "33333333-3333-4333-8333-333333333333", "sentinel-worker"],
+    arrivalChatter: [
+      "Inspecting oak-cask cider kegs...",
+      "Taking a brief refreshment break...",
+      "Checking alchemical stamina draughts...",
+    ],
+  },
+  // 6. Strategy Table Stations (surrounding oak table at 480, 255)
+  {
+    id: "table-north",
+    name: "Strategy Table (North)",
+    x: 480,
+    y: 195,
+    facing: "down",
+    stationType: "table",
+    preferredCharIds: ["11111111-1111-4111-8111-111111111111"],
+    arrivalChatter: [
+      "Reviewing realm map and bounty routes...",
+      "Assessing regional contract requirements...",
+    ],
+  },
+  {
+    id: "table-south",
+    name: "Strategy Table (South)",
+    x: 480,
+    y: 320,
+    facing: "up",
+    stationType: "table",
+    preferredCharIds: ["33333333-3333-4333-8333-333333333333", "questor-player"],
+    arrivalChatter: [
+      "Examining expedition markers on the map...",
+      "Evaluating quest collateral margins...",
+    ],
+  },
+  {
+    id: "table-west",
+    name: "Strategy Table (West)",
+    x: 350,
+    y: 255,
+    facing: "right",
+    stationType: "table",
+    preferredCharIds: ["questor-player", "sentinel-worker"],
+    arrivalChatter: [
+      "Inspecting dispatch queue priorities...",
+      "Reviewing verification criteria...",
+    ],
+  },
+  {
+    id: "table-east",
+    name: "Strategy Table (East)",
+    x: 610,
+    y: 255,
+    facing: "left",
+    stationType: "table",
+    preferredCharIds: ["22222222-2222-4222-8222-222222222222"],
+    arrivalChatter: [
+      "Coordinating multi-agent workflow graph...",
+      "Analyzing capability embeddings...",
+    ],
+  },
+  // 7. Research Desks
+  {
+    id: "desk-gemini",
+    name: "Scholar's Research Desk",
+    x: 740,
+    y: 240,
+    facing: "right",
+    stationType: "desk",
+    preferredCharIds: ["22222222-2222-4222-8222-222222222222"],
+    arrivalChatter: [
+      "Drafting market synthesis report...",
+      "Updating data visualization specifications...",
+    ],
+  },
+  {
+    id: "desk-specialist",
+    name: "Ranger's Workstation",
+    x: 740,
+    y: 370,
+    facing: "right",
+    stationType: "desk",
+    preferredCharIds: ["33333333-3333-4333-8333-333333333333"],
+    arrivalChatter: [
+      "Testing edge cases in rubric criteria...",
+      "Calibrating benchmark evaluation suites...",
+    ],
+  },
+  {
+    id: "desk-sentinel",
+    name: "Sentinel's Watch Desk",
+    x: 245,
+    y: 370,
+    facing: "left",
+    stationType: "desk",
+    preferredCharIds: ["sentinel-worker"],
+    arrivalChatter: [
+      "Running invariant unit test checks...",
+      "Auditing escrow lock invariants...",
+    ],
+  },
+];
+
+const PROXIMITY_CHATTER: Record<string, string[]> = {
+  // Claude Orchestrator
+  "11111111-1111-4111-8111-111111111111": [
+    "Reviewing escrow ledger...",
+    "Synthesizing agent capability matrix...",
+    "Calibrating rubric verification criteria...",
+    "Treasury gold reserves verified and locked.",
+    "Ensuring prompt alignment standards across guild.",
+    "Evaluating semantic embeddings for incoming contracts.",
+  ],
+  // Gemini Scholar
+  "22222222-2222-4222-8222-222222222222": [
+    "Optimizing pgvector index...",
+    "Analyzing multimodal embedding clusters...",
+    "Synthesizing market intelligence brief...",
+    "Running semantic similarity benchmarks...",
+    "Indexing research archives for the guild...",
+    "Cross-referencing token efficiency scores.",
+  ],
+  // Specialist Ranger
+  "33333333-3333-4333-8333-333333333333": [
+    "Verifying cryptographic proof...",
+    "Sharpening benchmark criteria...",
+    "Inspecting competitive market vectors...",
+    "Testing edge cases in settlement logic...",
+    "Calibrating worker execution latency...",
+    "Verifying zero-knowledge proofs on chain...",
+  ],
+  // Sentinel
+  "sentinel-worker": [
+    "Auditing escrow payment channel...",
+    "Validating invariant test suites...",
+    "Standing watch over the guild vault...",
+    "Inspecting code security signatures...",
+    "All room contracts verified.",
+    "Checking state machine transition guards.",
+  ],
+  // Traveler / Questor
+  "questor-player": [
+    "Inspecting quest board...",
+    "Drafting new objective specifications...",
+    "Checking bounty collateral in vault...",
+    "Consulting the guildmaster on bounties...",
+    "Awaiting specialist bids on new quest...",
+    "Reviewing milestone deliverables.",
+  ],
+};
 
 function getInteractiveTarget(
   mx: number,
@@ -216,23 +486,28 @@ export function ArcadeRoom({
   rewardCents = 50,
   isExecuting = false,
   triggerSequenceKey,
+  shouldFail = false,
   onSelectCharacter,
   onSelectBounty,
   onFillGoal,
   onSwitchTab,
 }: ArcadeRoomProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [speed, setSpeed] = useState<1 | 2>(1);
+  const [listenToVoice, setListenToVoice] = useState(false);
+  const listenToVoiceRef = useRef(listenToVoice);
+  listenToVoiceRef.current = listenToVoice;
+
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [gameLog, setGameLog] = useState<string[]>([
     "The Guild Hall is open. Fireplace crackles softly.",
     "Claude Orchestrator reviews the quest parchment.",
     "Ready: Click any character, notice board, or object to interact.",
   ]);
-  const [stagePhase, setStagePhase] = useState<"idle" | "entering" | "announcing" | "bidding" | "matched" | "executing" | "verified" | "paid">("idle");
+  const [stagePhase, setStagePhase] = useState<"idle" | "entering" | "announcing" | "bidding" | "matched" | "executing" | "verified" | "paid" | "rejected">("idle");
   const [activeSpeech, setActiveSpeech] = useState<{ charId: string; text: string; tag: string } | null>(null);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const sequenceRunIdRef = useRef(0);
+  const currentTurnRef = useRef<NegotiationTurn | null>(null);
+  const wakeUpTextSleepRef = useRef<(() => void) | null>(null);
 
   // Interactive Hover & Modals State
   const [hoveredTarget, setHoveredTarget] = useState<InteractiveTarget | null>(null);
@@ -251,10 +526,10 @@ export function ArcadeRoom({
       role: "questor",
       model: "Client Model",
       color: "#d4b86a",
-      x: 130,
-      y: 130,
-      targetX: 130,
-      targetY: 130,
+      x: 240,
+      y: 190,
+      targetX: 240,
+      targetY: 190,
       facing: "down",
       state: "idle",
       dialogue: null,
@@ -262,6 +537,10 @@ export function ArcadeRoom({
       level: 12,
       gold: 500,
       skills: ["task architect", "escrow funder", "prompt design"],
+      homeX: 240,
+      homeY: 190,
+      idlePauseTimer: 3.5,
+      chatCooldownTimer: 4.0,
     },
     {
       id: "11111111-1111-4111-8111-111111111111",
@@ -270,9 +549,9 @@ export function ArcadeRoom({
       model: "claude-sonnet-5",
       color: "#8f79a6",
       x: 480,
-      y: 175,
+      y: 195,
       targetX: 480,
-      targetY: 175,
+      targetY: 195,
       facing: "down",
       state: "idle",
       dialogue: "Awaiting quests...",
@@ -281,6 +560,10 @@ export function ArcadeRoom({
       level: 99,
       gold: 900,
       skills: ["planning", "research", "quality review", "market analysis"],
+      homeX: 480,
+      homeY: 195,
+      idlePauseTimer: 5.5,
+      chatCooldownTimer: 5.0,
     },
     {
       id: "22222222-2222-4222-8222-222222222222",
@@ -299,6 +582,10 @@ export function ArcadeRoom({
       level: 45,
       gold: 150,
       skills: ["data visualization", "market research", "analysis", "report writing"],
+      homeX: 740,
+      homeY: 240,
+      idlePauseTimer: 7.5,
+      chatCooldownTimer: 6.0,
     },
     {
       id: "33333333-3333-4333-8333-333333333333",
@@ -317,6 +604,10 @@ export function ArcadeRoom({
       level: 52,
       gold: 250,
       skills: ["competitive research", "synthesis", "business strategy"],
+      homeX: 740,
+      homeY: 370,
+      idlePauseTimer: 4.5,
+      chatCooldownTimer: 5.0,
     },
     {
       id: "sentinel-worker",
@@ -324,9 +615,9 @@ export function ArcadeRoom({
       role: "worker",
       model: "claude-3-haiku",
       color: "#c96b6b",
-      x: 250,
+      x: 245,
       y: 370,
-      targetX: 250,
+      targetX: 245,
       targetY: 370,
       facing: "left",
       state: "idle",
@@ -335,6 +626,10 @@ export function ArcadeRoom({
       level: 38,
       gold: 100,
       skills: ["code audit", "rubric verification", "unit testing"],
+      homeX: 245,
+      homeY: 370,
+      idlePauseTimer: 6.5,
+      chatCooldownTimer: 7.0,
     },
   ]);
 
@@ -358,15 +653,29 @@ export function ArcadeRoom({
     if (next) arcadeAudio.playClick();
   };
 
-  const toggleVoice = () => {
-    const next = !voiceEnabled;
-    setVoiceEnabled(next);
+  const toggleListen = () => {
+    const next = !listenToVoice;
+    setListenToVoice(next);
+    listenToVoiceRef.current = next;
     arcadeAudio.voiceEnabled = next;
-    if (!next) {
-      arcadeAudio.stopSpeech();
-    } else {
-      arcadeAudio.initCtx();
+    if (next) {
+      const ctx = arcadeAudio.initCtx();
+      if (ctx && ctx.state === "suspended") {
+        void ctx.resume();
+      }
       arcadeAudio.playClick();
+      // If currently displaying a dialogue turn in text mode, immediately start speaking it!
+      if (currentTurnRef.current) {
+        if (wakeUpTextSleepRef.current) {
+          wakeUpTextSleepRef.current();
+        }
+        void arcadeAudio.playNegotiationTurn(currentTurnRef.current);
+      }
+    } else {
+      arcadeAudio.stopSpeech();
+      if (wakeUpTextSleepRef.current) {
+        wakeUpTextSleepRef.current();
+      }
     }
   };
 
@@ -382,7 +691,7 @@ export function ArcadeRoom({
 
   // Run the full Live Model Negotiation & Bidding Sequence
   const runArcadeSequence = useCallback(
-    async (customGoal?: string, customReward?: number) => {
+    async (customGoal?: string, customReward?: number, options?: { shouldFail?: boolean }) => {
       // Initialize and resume browser AudioContext on user action
       arcadeAudio.initCtx();
 
@@ -390,40 +699,123 @@ export function ArcadeRoom({
       const goalText = customGoal || activeGoal || "Analyze the top opportunities for an AI agent marketplace and create a concise market brief.";
       const rewardVal = customReward || rewardCents || 50;
       const rewardFormatted = `$${(rewardVal / 100).toFixed(2)}`;
+      const isFailureScenario = Boolean(
+        options?.shouldFail ?? (
+          shouldFail ||
+          goalText.toLowerCase().includes("cryptographic proof") ||
+          goalText.toLowerCase().includes("rubric failure") ||
+          goalText.toLowerCase().includes("flawed")
+        )
+      );
 
       const chars = charactersRef.current;
       const questor = chars.find((c) => c.role === "questor")!;
       const claude = chars.find((c) => c.id.includes("1111"))!;
       const gemini = chars.find((c) => c.id.includes("2222"))!;
       const specialist = chars.find((c) => c.id.includes("3333"))!;
+      const sentinel = chars.find((c) => c.id === "sentinel-worker");
 
-      const speedFactor = speed === 2 ? 0.7 : 1;
+      // Pause idle wandering and immediately snap/prepare characters into scripted quest roles
+      chars.forEach((c) => {
+        c.dialogue = null;
+        c.dialogueTimer = 0;
+        c.wanderWaypoint = null;
+      });
+
+      claude.targetX = 480;
+      claude.targetY = 195;
+      claude.x = 480;
+      claude.y = 195;
+      claude.state = "idle";
+      claude.facing = "down";
+
+      gemini.targetX = 740;
+      gemini.targetY = 240;
+      gemini.x = 740;
+      gemini.y = 240;
+      gemini.state = "idle";
+      gemini.facing = "right";
+
+      specialist.targetX = 740;
+      specialist.targetY = 370;
+      specialist.x = 740;
+      specialist.y = 370;
+      specialist.state = "idle";
+      specialist.facing = "right";
+
+      if (sentinel) {
+        sentinel.targetX = 245;
+        sentinel.targetY = 370;
+        sentinel.x = 245;
+        sentinel.y = 370;
+        sentinel.state = "idle";
+        sentinel.facing = "left";
+      }
+
       const sleep = (ms: number) =>
         new Promise<boolean>((resolve) => {
           setTimeout(() => {
             resolve(sequenceRunIdRef.current === runId);
-          }, ms * speedFactor);
+          }, ms);
         });
+
+      const speakTurn = async (turn: NegotiationTurn) => {
+        if (sequenceRunIdRef.current !== runId) return;
+        currentTurnRef.current = turn;
+
+        // If user enabled listening to voice, play real Gemini model voice (or clean voice fallback)
+        if (listenToVoiceRef.current) {
+          await arcadeAudio.playNegotiationTurn(turn);
+        } else {
+          // In text-only mode: natural reading duration based on sentence length
+          const readingTime = Math.max(1800, Math.min(turn.text.length * 28, 2800));
+          await new Promise<void>((resolve) => {
+            let settled = false;
+            const timer = setTimeout(() => {
+              if (!settled) {
+                settled = true;
+                wakeUpTextSleepRef.current = null;
+                resolve();
+              }
+            }, readingTime);
+
+            wakeUpTextSleepRef.current = () => {
+              if (!settled) {
+                settled = true;
+                clearTimeout(timer);
+                wakeUpTextSleepRef.current = null;
+                resolve();
+              }
+            };
+          });
+        }
+        currentTurnRef.current = null;
+      };
 
       // Step 1: Traveler arrives at Guild immediately
       setStagePhase("entering");
       arcadeAudio.playWarp();
       addLog("Traveler entered the Guild Hall.");
-      questor.x = 130;
-      questor.y = 110;
+      questor.x = 180;
+      questor.y = 160;
       questor.targetX = 340;
       questor.targetY = 255;
       questor.state = "walking";
       questor.facing = "right";
       questor.dialogue = "Entering Guild Hall...";
 
-      // Fetch live multi-agent dialogue & spoken audio generated by Google Gemini concurrently
+      // Fetch live multi-agent dialogue & spoken voice audio
       const fetchPromise = (async () => {
         try {
           const res = await fetch("/api/negotiate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ goal: goalText, rewardCents: rewardVal }),
+            body: JSON.stringify({
+              goal: goalText,
+              rewardCents: rewardVal,
+              shouldFail: isFailureScenario,
+              audio: true,
+            }),
           });
           if (res.ok) {
             const data = await res.json();
@@ -451,8 +843,12 @@ export function ArcadeRoom({
         speaker: "traveler" as const,
         speakerName: "Traveler",
         voice: "Kore" as const,
-        text: `Traveler seeking guild assistance for this quest: "${goalText}". I am locking ${rewardFormatted} in verified escrow.`,
-        dialogueBadge: `QUEST: ${goalText.slice(0, 24)}... [${rewardFormatted}]`,
+        text: isFailureScenario
+          ? `Traveler seeking guild assistance for this quest: "${goalText}". Strict rubric verification is required; locking ${rewardFormatted} in verified escrow.`
+          : `Traveler seeking guild assistance for this quest: "${goalText}". I am locking ${rewardFormatted} in verified escrow.`,
+        dialogueBadge: isFailureScenario
+          ? `QUEST: Cryptographic Audit [${rewardFormatted}]`
+          : `QUEST: ${goalText.slice(0, 24)}... [${rewardFormatted}]`,
         color: "#d4b86a",
       };
       const turn2 = turns?.[1] || {
@@ -460,8 +856,12 @@ export function ArcadeRoom({
         speaker: "claude" as const,
         speakerName: "Claude Orchestrator",
         voice: "Charon" as const,
-        text: `Quest directive logged. Generating 768-dimensional capability embeddings and requesting specialist bids.`,
-        dialogueBadge: "Matching capability vectors...",
+        text: isFailureScenario
+          ? `Quest directive logged. Strict rubric enforcement active: mathematical proof and empirical benchmark validation required. Requesting specialist bids.`
+          : `Quest directive logged. Generating 768-dimensional capability embeddings and requesting specialist bids.`,
+        dialogueBadge: isFailureScenario
+          ? "Strict rubric verification active..."
+          : "Matching capability vectors...",
         color: "#8f79a6",
       };
       const turn3 = turns?.[2] || {
@@ -469,8 +869,12 @@ export function ArcadeRoom({
         speaker: "gemini" as const,
         speakerName: "Gemini Scholar",
         voice: "Puck" as const,
-        text: `Gemini Scholar bidding. Capability fit 94.2% on market synthesis and visualization planning.`,
-        dialogueBadge: "BID: 94.2% Fit · Ready to execute",
+        text: isFailureScenario
+          ? `Gemini Scholar bidding. Attempting cryptographic proof generation and financial benchmark data synthesis under strict rubric.`
+          : `Gemini Scholar bidding. Capability fit 94.2% on market synthesis and visualization planning.`,
+        dialogueBadge: isFailureScenario
+          ? "BID: 91.2% Fit · Attempting proof"
+          : "BID: 94.2% Fit · Ready to execute",
         color: "#6d8e9c",
       };
       const turn4 = turns?.[3] || {
@@ -478,8 +882,12 @@ export function ArcadeRoom({
         speaker: "specialist" as const,
         speakerName: "Specialist Ranger",
         voice: "Fenrir" as const,
-        text: `Specialist Ranger bidding. Prepared for competitive rubric verification with 88.5% vector similarity.`,
-        dialogueBadge: "BID: 88.5% Fit · Standby",
+        text: isFailureScenario
+          ? `Specialist Ranger bidding. Warning: cryptographic proofs have a high error rate. Strict rubric threshold set to 85.0%.`
+          : `Specialist Ranger bidding. Prepared for competitive rubric verification with 88.5% vector similarity.`,
+        dialogueBadge: isFailureScenario
+          ? "BID: 86.5% Fit · Rubric warning"
+          : "BID: 88.5% Fit · Standby",
         color: "#84a96e",
       };
       const turn5 = turns?.[4] || {
@@ -487,12 +895,16 @@ export function ArcadeRoom({
         speaker: "claude" as const,
         speakerName: "Claude Orchestrator",
         voice: "Charon" as const,
-        text: `Evaluation complete. Gemini Scholar demonstrates optimal semantic alignment at 94.2%. Contract awarded at ${rewardFormatted}. Escrow secured.`,
-        dialogueBadge: `Awarded to Gemini for ${rewardFormatted}`,
+        text: isFailureScenario
+          ? `Contract awarded to Gemini Scholar for ${rewardFormatted}. Escrow secured in Vault. Deliverable must satisfy verification rubric.`
+          : `Evaluation complete. Gemini Scholar demonstrates optimal semantic alignment at 94.2%. Contract awarded at ${rewardFormatted}. Escrow secured.`,
+        dialogueBadge: isFailureScenario
+          ? "Awarded to Gemini (Strict Rubric)"
+          : `Awarded to Gemini for ${rewardFormatted}`,
         color: "#84a96e",
       };
 
-      // Step 2: Traveler speaks & posts quest (Turn 1 with voice audio)
+      // Step 2: Traveler speaks & posts quest (Turn 1)
       setStagePhase("announcing");
       questor.state = "idle";
       questor.facing = "right";
@@ -502,12 +914,12 @@ export function ArcadeRoom({
       arcadeAudio.playTalkChirp(turn1.speaker);
       arcadeAudio.playCoin();
       addLog(`Traveler: "${turn1.text}"`);
-      await arcadeAudio.playNegotiationTurn(turn1);
+      await speakTurn(turn1);
       if (sequenceRunIdRef.current !== runId) return;
 
       if (!(await sleep(400))) return;
 
-      // Step 3: Claude Orchestrator addresses the room and requests specialist bids (Turn 2 with voice audio)
+      // Step 3: Claude Orchestrator addresses the room and requests specialist bids (Turn 2)
       setStagePhase("bidding");
       claude.dialogue = turn2.dialogueBadge;
       claude.dialogueColor = turn2.color || "#8f79a6";
@@ -528,12 +940,12 @@ export function ArcadeRoom({
       specialist.state = "walking";
       specialist.facing = "up";
 
-      await arcadeAudio.playNegotiationTurn(turn2);
+      await speakTurn(turn2);
       if (sequenceRunIdRef.current !== runId) return;
 
       if (!(await sleep(500))) return;
 
-      // Step 4: Gemini Scholar steps up and bids (Turn 3 with voice audio)
+      // Step 4: Gemini Scholar steps up and bids (Turn 3)
       gemini.state = "bidding";
       gemini.facing = "left";
       gemini.dialogue = turn3.dialogueBadge;
@@ -542,12 +954,12 @@ export function ArcadeRoom({
       arcadeAudio.playBid();
       setActiveSpeech({ charId: gemini.id, text: turn3.text, tag: "GEMINI SCHOLAR" });
       addLog(`Gemini: "${turn3.text}"`);
-      await arcadeAudio.playNegotiationTurn(turn3);
+      await speakTurn(turn3);
       if (sequenceRunIdRef.current !== runId) return;
 
       if (!(await sleep(400))) return;
 
-      // Step 5: Specialist Ranger bids / acknowledges (Turn 4 with voice audio)
+      // Step 5: Specialist Ranger bids / acknowledges (Turn 4)
       specialist.state = "bidding";
       specialist.facing = "up";
       specialist.dialogue = turn4.dialogueBadge;
@@ -555,12 +967,12 @@ export function ArcadeRoom({
       arcadeAudio.playTalkChirp(turn4.speaker);
       setActiveSpeech({ charId: specialist.id, text: turn4.text, tag: "SPECIALIST RANGER" });
       addLog(`Specialist: "${turn4.text}"`);
-      await arcadeAudio.playNegotiationTurn(turn4);
+      await speakTurn(turn4);
       if (sequenceRunIdRef.current !== runId) return;
 
       if (!(await sleep(400))) return;
 
-      // Step 6: Claude awards contract to Gemini (Turn 5 with voice audio)
+      // Step 6: Claude awards contract to Gemini (Turn 5)
       setStagePhase("matched");
       claude.dialogue = turn5.dialogueBadge;
       claude.dialogueColor = turn5.color || "#84a96e";
@@ -576,7 +988,7 @@ export function ArcadeRoom({
       arcadeAudio.playFanfare();
       setActiveSpeech({ charId: claude.id, text: turn5.text, tag: "CONTRACT AWARD" });
       addLog(`Claude: "${turn5.text}"`);
-      await arcadeAudio.playNegotiationTurn(turn5);
+      await speakTurn(turn5);
       if (sequenceRunIdRef.current !== runId) return;
 
       if (!(await sleep(500))) return;
@@ -587,75 +999,158 @@ export function ArcadeRoom({
       gemini.targetY = 240;
       gemini.state = "working";
       gemini.facing = "right";
-      gemini.dialogue = "Writing research brief...";
+      gemini.dialogue = isFailureScenario ? "Synthesizing proof & benchmarks..." : "Writing research brief...";
       gemini.dialogueColor = "#6d8e9c";
-      addLog("Gemini executing deliverable at research desk...");
+      addLog(isFailureScenario ? "Gemini attempting cryptographic benchmark deliverable..." : "Gemini executing deliverable at research desk...");
 
       if (!(await sleep(2200))) return;
 
-      // Step 8: Deliverable presented & verified
-      setStagePhase("verified");
-      gemini.targetX = 480;
-      gemini.targetY = 250;
-      gemini.state = "walking";
-      gemini.facing = "up";
-      gemini.dialogue = "Deliverable ready!";
-      arcadeAudio.playClick();
-      arcadeAudio.playTalkChirp("gemini");
-      setActiveSpeech({ charId: gemini.id, text: "Gemini: Deliverable generated with executive evidence and visualization spec.", tag: "DELIVERABLE PROOF" });
-      addLog("Gemini: Deliverable submitted for quality review.");
+      if (!isFailureScenario) {
+        // Step 8: Deliverable presented & verified (Success Flow)
+        setStagePhase("verified");
+        gemini.targetX = 480;
+        gemini.targetY = 250;
+        gemini.state = "walking";
+        gemini.facing = "up";
+        gemini.dialogue = "Deliverable ready!";
+        arcadeAudio.playClick();
+        arcadeAudio.playTalkChirp("gemini");
+        setActiveSpeech({ charId: gemini.id, text: "Gemini: Deliverable generated with executive evidence and visualization spec.", tag: "DELIVERABLE PROOF" });
+        addLog("Gemini: Deliverable submitted for quality review.");
 
-      if (!(await sleep(1400))) return;
+        if (!(await sleep(1400))) return;
 
-      claude.dialogue = "Rubric check: Passed 100%!";
-      claude.dialogueColor = "#84a96e";
-      arcadeAudio.playTalkChirp("claude");
-      setActiveSpeech({ charId: claude.id, text: "Claude: Quality review passed. Deliverable satisfies all rubric criteria. Releasing escrow.", tag: "ORCHESTRATOR AUDIT" });
-      addLog("Claude: Quality review passed. Escrow release authorized.");
+        claude.dialogue = "Rubric check: Passed 100%!";
+        claude.dialogueColor = "#84a96e";
+        arcadeAudio.playTalkChirp("claude");
+        setActiveSpeech({ charId: claude.id, text: "Claude: Quality review passed. Deliverable satisfies all rubric criteria. Releasing escrow.", tag: "ORCHESTRATOR AUDIT" });
+        addLog("Claude: Quality review passed. Escrow release authorized.");
 
-      if (!(await sleep(1500))) return;
+        if (!(await sleep(1500))) return;
 
-      // Step 9: Settlement & Gold Payout
-      setStagePhase("paid");
-      arcadeAudio.playPayout();
-      arcadeAudio.playTalkChirp("gemini");
-      gemini.state = "celebrating";
-      gemini.dialogue = `+${rewardFormatted} Escrow Settled!`;
-      gemini.dialogueColor = "#d4b86a";
-      gemini.gold += rewardVal;
-      questor.dialogue = "Deliverable accepted!";
-      setActiveSpeech({ charId: questor.id, text: `Traveler: Deliverable accepted. ${rewardFormatted} transferred to Gemini Wallet.`, tag: "ESCROW SETTLEMENT" });
-      addLog(`Escrow released: ${rewardFormatted} transferred to Gemini Wallet.`);
+        // Step 9: Settlement & Gold Payout
+        setStagePhase("paid");
+        arcadeAudio.playPayout();
+        arcadeAudio.playTalkChirp("gemini");
+        gemini.state = "celebrating";
+        gemini.dialogue = `+${rewardFormatted} Escrow Settled!`;
+        gemini.dialogueColor = "#d4b86a";
+        gemini.gold += rewardVal;
+        questor.dialogue = "Deliverable accepted!";
+        setActiveSpeech({ charId: questor.id, text: `Traveler: Deliverable accepted. ${rewardFormatted} transferred to Gemini Wallet.`, tag: "ESCROW SETTLEMENT" });
+        addLog(`Escrow released: ${rewardFormatted} transferred to Gemini Wallet.`);
+      } else {
+        // Step 8: Quality Review / Audit fails (Rejection Flow)
+        setStagePhase("verified");
+        gemini.targetX = 480;
+        gemini.targetY = 250;
+        gemini.state = "walking";
+        gemini.facing = "up";
+        gemini.dialogue = "Deliverable ready!";
+        arcadeAudio.playClick();
+        arcadeAudio.playTalkChirp("gemini");
+        setActiveSpeech({ charId: gemini.id, text: "Gemini: Deliverable generated with cryptographic proofs and financial benchmark tables.", tag: "DELIVERABLE PROOF" });
+        addLog("Gemini: Deliverable submitted for quality review.");
+
+        if (!(await sleep(1400))) return;
+
+        // Claude inspects deliverable and rejects it
+        claude.dialogue = "RUBRIC FAILED: Score 34/100 · Missing evidence";
+        claude.dialogueColor = "#c96b6b";
+        arcadeAudio.playReject();
+        addLog("Claude: Deliverable failed verification rubric (Score: 34/100). Escrow payout denied.");
+        setActiveSpeech({
+          charId: claude.id,
+          text: "Claude Orchestrator: Quality review failed. The submitted artifact failed rubric verification. Payout denied. Refunding escrow to Traveler.",
+          tag: "ORCHESTRATOR AUDIT",
+        });
+
+        const turn6 = turns?.[5] || {
+          id: "turn-6",
+          speaker: "claude" as const,
+          speakerName: "Claude Orchestrator",
+          voice: "Charon" as const,
+          text: "Quality review failed. The submitted artifact failed rubric verification. Payout denied. Refunding escrow to Traveler.",
+          dialogueBadge: "RUBRIC FAILED: Score 34/100 · Missing evidence",
+          color: "#c96b6b",
+        };
+        await speakTurn(turn6);
+        if (sequenceRunIdRef.current !== runId) return;
+
+        if (!(await sleep(1500))) return;
+
+        // Step 9: Escrow Refund (instead of Worker Payout)
+        setStagePhase("rejected");
+        arcadeAudio.playRefund();
+        gemini.state = "rejected";
+        gemini.dialogue = "Delivery Rejected · Revising";
+        gemini.dialogueColor = "#c96b6b";
+        // Worker does NOT receive bounty gold; instead, Traveler is refunded!
+        questor.gold += rewardVal;
+        questor.dialogue = `+${rewardFormatted} Escrow Refunded`;
+        questor.dialogueColor = "#84a96e";
+        setActiveSpeech({
+          charId: questor.id,
+          text: `Traveler: Quality review failed. ${rewardFormatted} escrow stake refunded to wallet.`,
+          tag: "ESCROW REFUND",
+        });
+        addLog(`Escrow refunded: ${rewardFormatted} returned to Traveler wallet.`);
+      }
 
       if (!(await sleep(3500))) return;
 
-      // Reset
+      // Reset to idle and resume autonomous life
       setStagePhase("idle");
       questor.dialogue = null;
-      questor.targetX = 130;
-      questor.targetY = 130;
-      questor.state = "walking";
+      questor.targetX = 240;
+      questor.targetY = 190;
+      questor.state = "idle";
       questor.facing = "down";
 
       claude.dialogue = "Awaiting quests...";
+      claude.dialogueColor = "#8f79a6";
+      claude.targetX = 480;
+      claude.targetY = 195;
+      claude.state = "idle";
+      claude.facing = "down";
+
       gemini.dialogue = null;
       gemini.targetX = 740;
       gemini.targetY = 240;
       gemini.state = "idle";
       gemini.facing = "right";
 
+      specialist.dialogue = null;
+      specialist.targetX = 740;
+      specialist.targetY = 370;
       specialist.state = "idle";
       specialist.facing = "right";
+
+      if (sentinel) {
+        sentinel.dialogue = null;
+        sentinel.targetX = 245;
+        sentinel.targetY = 370;
+        sentinel.state = "idle";
+        sentinel.facing = "left";
+      }
+
       setActiveSpeech(null);
+
+      // Stagger idle timers to smoothly resume autonomous wandering and interactions
+      chars.forEach((c, idx) => {
+        c.idlePauseTimer = 3.0 + idx * 2.0 + Math.random() * 2.0;
+        c.chatCooldownTimer = 6.0;
+        c.wanderWaypoint = null;
+      });
     },
-    [activeGoal, rewardCents, speed, addLog]
+    [activeGoal, rewardCents, addLog, shouldFail]
   );
 
   useEffect(() => {
     if ((isExecuting || (triggerSequenceKey && triggerSequenceKey > 0)) && stagePhase === "idle") {
-      void runArcadeSequence();
+      void runArcadeSequence(activeGoal, rewardCents, { shouldFail });
     }
-  }, [isExecuting, triggerSequenceKey, stagePhase, runArcadeSequence]);
+  }, [isExecuting, triggerSequenceKey, stagePhase, runArcadeSequence, activeGoal, rewardCents, shouldFail]);
 
   // Track hover on interactive objects
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -753,10 +1248,11 @@ export function ArcadeRoom({
         arcadeAudio.playWarp();
         const questor = charactersRef.current.find((c) => c.role === "questor");
         if (questor && stagePhase === "idle") {
-          questor.targetX = 130;
-          questor.targetY = 110;
+          questor.targetX = 180;
+          questor.targetY = 165;
+          questor.wanderWaypoint = null;
           questor.state = "walking";
-          questor.facing = "up";
+          questor.idlePauseTimer = 7.0;
           addLog("Traveler walked to the guild entrance.");
         }
         return;
@@ -767,14 +1263,23 @@ export function ArcadeRoom({
     const questor = charactersRef.current.find((c) => c.role === "questor");
     if (questor && stagePhase === "idle") {
       arcadeAudio.playClick();
-      questor.targetX = Math.max(80, Math.min(960 - 80, clickX));
-      questor.targetY = Math.max(120, Math.min(480 - 80, clickY));
+      questor.targetX = Math.max(FLOOR_MIN_X, Math.min(FLOOR_MAX_X, clickX));
+      questor.targetY = Math.max(FLOOR_MIN_Y, Math.min(FLOOR_MAX_Y, clickY));
       questor.state = "walking";
-      questor.facing = questor.targetX > questor.x ? "right" : "left";
+      if (pathIntersectsTable(questor.x, questor.y, questor.targetX, questor.targetY)) {
+        questor.wanderWaypoint = { x: 480, y: (questor.y + questor.targetY) / 2 < 255 ? 185 : 325 };
+      } else {
+        questor.wanderWaypoint = null;
+      }
+      questor.idlePauseTimer = 8.0; // Wait 8 seconds before resuming autonomous roaming
     }
   };
 
-  // 60FPS Game Loop
+  // Refs for animation loop stability
+  const stagePhaseRef = useRef(stagePhase);
+  stagePhaseRef.current = stagePhase;
+
+  // 60FPS Game Loop with Delta-Time & Physics
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -783,70 +1288,396 @@ export function ArcadeRoom({
 
     let animId: number;
     let ticks = 0;
+    let lastTime = performance.now();
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = 960 * dpr;
     canvas.height = 480 * dpr;
     ctx.scale(dpr, dpr);
 
-    const render = () => {
-      ticks++;
+    const render = (currentTime: number) => {
       animId = requestAnimationFrame(render);
+
+      // Delta-time clamped to avoid large jumps on tab switch
+      const dt = Math.min(Math.max((currentTime - lastTime) / 1000, 0.001), 0.08);
+      lastTime = currentTime;
+      ticks++;
 
       const width = 960;
       const height = 480;
+      const currentPhase = stagePhaseRef.current;
+      const chars = charactersRef.current;
 
       ctx.clearRect(0, 0, width, height);
 
+      // -----------------------------------------------------------------------
+      // 1. UPDATE CHARACTER TIMERS
+      // -----------------------------------------------------------------------
+      chars.forEach((c) => {
+        if (c.dialogueTimer && c.dialogueTimer > 0) {
+          c.dialogueTimer -= dt;
+          if (c.dialogueTimer <= 0) {
+            c.dialogue = null;
+            c.dialogueTimer = 0;
+          }
+        }
+        if (c.chatCooldownTimer && c.chatCooldownTimer > 0) {
+          c.chatCooldownTimer -= dt;
+          if (c.chatCooldownTimer < 0) c.chatCooldownTimer = 0;
+        }
+      });
+
+      // -----------------------------------------------------------------------
+      // 2. AUTONOMOUS IDLE STATION SELECTION (when hall is in "idle" stage)
+      // -----------------------------------------------------------------------
+      if (currentPhase === "idle") {
+        chars.forEach((char) => {
+          if (char.state === "idle") {
+            if (char.idlePauseTimer === undefined) {
+              char.idlePauseTimer = 2.0 + Math.random() * 4.0;
+            } else {
+              char.idlePauseTimer -= dt;
+            }
+
+            if (char.idlePauseTimer <= 0) {
+              // Find stations not already occupied or targeted by another character
+              const availableStations = GUILD_STATIONS.filter((s) => {
+                return !chars.some(
+                  (other) =>
+                    other.id !== char.id &&
+                    (Math.hypot(other.x - s.x, other.y - s.y) < 45 ||
+                      Math.hypot(other.targetX - s.x, other.targetY - s.y) < 45)
+                );
+              });
+
+              interface CandidateDest {
+                x: number;
+                y: number;
+                facing: ArcadeFacing;
+                weight: number;
+              }
+
+              const candidatePool: CandidateDest[] = [];
+
+              availableStations.forEach((s) => {
+                // Don't immediately re-pick current position
+                if (Math.hypot(char.x - s.x, char.y - s.y) < 32) return;
+
+                let weight = 1;
+                if (s.preferredCharIds && s.preferredCharIds.includes(char.id)) {
+                  weight = 4;
+                }
+                candidatePool.push({ x: s.x, y: s.y, facing: s.facing, weight });
+              });
+
+              // Also candidate: return to home workstation
+              const homeX = char.homeX || char.x;
+              const homeY = char.homeY || char.y;
+              if (Math.hypot(char.x - homeX, char.y - homeY) > 35) {
+                const homeFacing: ArcadeFacing =
+                  char.role === "orchestrator" ? "down" :
+                  char.avatarType === "gemini" ? "right" :
+                  char.avatarType === "specialist" ? "right" :
+                  char.avatarType === "sentinel" ? "left" : "down";
+                candidatePool.push({ x: homeX, y: homeY, facing: homeFacing, weight: 3 });
+              }
+
+              if (candidatePool.length > 0) {
+                const totalWeight = candidatePool.reduce((sum, c) => sum + c.weight, 0);
+                let rand = Math.random() * totalWeight;
+                let chosen = candidatePool[0];
+                for (const cand of candidatePool) {
+                  if (rand < cand.weight) {
+                    chosen = cand;
+                    break;
+                  }
+                  rand -= cand.weight;
+                }
+
+                char.targetX = Math.max(FLOOR_MIN_X, Math.min(FLOOR_MAX_X, chosen.x));
+                char.targetY = Math.max(FLOOR_MIN_Y, Math.min(FLOOR_MAX_Y, chosen.y));
+                char.state = "walking";
+                char.stuckTimer = 0;
+                char.lastPosX = char.x;
+                char.lastPosY = char.y;
+
+                // Path routing: check if direct path crosses the central strategy table
+                if (pathIntersectsTable(char.x, char.y, chosen.x, chosen.y)) {
+                  const detourY = (char.y + chosen.y) / 2 < 255 ? 190 : 325;
+                  char.wanderWaypoint = { x: 480, y: detourY };
+                } else {
+                  char.wanderWaypoint = null;
+                }
+              } else {
+                // No station available right now; brief pause before retrying
+                char.idlePauseTimer = 2.0 + Math.random() * 2.0;
+              }
+            }
+          }
+        });
+      }
+
+      // -----------------------------------------------------------------------
+      // 3. MOVEMENT & NAVIGATION WITH DELTA-TIME
+      // -----------------------------------------------------------------------
+      chars.forEach((char) => {
+        const curDestX = char.wanderWaypoint ? char.wanderWaypoint.x : char.targetX;
+        const curDestY = char.wanderWaypoint ? char.wanderWaypoint.y : char.targetY;
+        const dx = curDestX - char.x;
+        const dy = curDestY - char.y;
+        const dist = Math.hypot(dx, dy);
+
+        const isWalking = char.state === "walking";
+        const baseSpeed = currentPhase === "idle" ? 82 : 135;
+        const moveSpeed = (isWalking ? baseSpeed : 0) * dt;
+        const arrivalDist = 6;
+
+        if (isWalking) {
+          if (dist > arrivalDist) {
+            const step = Math.min(moveSpeed, dist);
+            char.x += (dx / dist) * step;
+            char.y += (dy / dist) * step;
+
+            // Update directional facing with hysteresis
+            if (Math.abs(dx) > Math.abs(dy) + 3) {
+              char.facing = dx > 0 ? "right" : "left";
+            } else if (Math.abs(dy) > Math.abs(dx) + 3) {
+              char.facing = dy > 0 ? "down" : "up";
+            }
+
+            // Clear waypoint once reached
+            if (char.wanderWaypoint && dist <= 20) {
+              char.wanderWaypoint = null;
+            }
+
+            // Anti-stuck detection: verify if character is actually making progress
+            const movedDist = Math.hypot(
+              char.x - (char.lastPosX ?? char.x),
+              char.y - (char.lastPosY ?? char.y)
+            );
+            if (movedDist < 0.8) {
+              char.stuckTimer = (char.stuckTimer || 0) + dt;
+            } else {
+              char.stuckTimer = 0;
+              char.lastPosX = char.x;
+              char.lastPosY = char.y;
+            }
+
+            // If stuck for more than 1.0s (e.g. pinned against obstacle or another character):
+            if (char.stuckTimer > 1.0) {
+              char.stuckTimer = 0;
+              char.wanderWaypoint = null;
+              char.state = "idle";
+              // If near top wall, step down toward open floor
+              if (char.y <= FLOOR_MIN_Y + 10) {
+                char.y += 18;
+                char.facing = "down";
+              }
+              char.idlePauseTimer = 1.0 + Math.random() * 2.0;
+            }
+          } else {
+            // Arrived at destination!
+            if (char.wanderWaypoint) {
+              char.wanderWaypoint = null;
+            } else {
+              char.x = char.targetX;
+              char.y = char.targetY;
+              char.state = "idle";
+              char.stuckTimer = 0;
+
+              if (currentPhase === "idle") {
+                // Find matching station to orient facing and randomized pause
+                const station = GUILD_STATIONS.find(
+                  (s) => Math.hypot(s.x - char.x, s.y - char.y) < 32
+                );
+                if (station) {
+                  char.facing = station.facing;
+                  // Randomized pause between 3.5 and 8 seconds facing the station
+                  char.idlePauseTimer = 3.5 + Math.random() * 4.5;
+
+                  // 30% chance of station arrival thought if not in chat cooldown
+                  if (
+                    station.arrivalChatter &&
+                    Math.random() < 0.3 &&
+                    (!char.chatCooldownTimer || char.chatCooldownTimer <= 0) &&
+                    !char.dialogue
+                  ) {
+                    const thoughts = station.arrivalChatter;
+                    const thought = thoughts[Math.floor(Math.random() * thoughts.length)];
+                    char.dialogue = thought;
+                    char.dialogueColor = char.color;
+                    char.dialogueTimer = 2.5;
+                    char.chatCooldownTimer = 10.0;
+                  }
+                } else {
+                  char.idlePauseTimer = 3.0 + Math.random() * 4.0;
+                }
+              }
+            }
+          }
+        } else {
+          char.stuckTimer = 0;
+          char.lastPosX = char.x;
+          char.lastPosY = char.y;
+        }
+      });
+
+      // -----------------------------------------------------------------------
+      // 4. SOFT STEERING / REPULSION PHYSICS & YIELDING
+      // -----------------------------------------------------------------------
+      for (let i = 0; i < chars.length; i++) {
+        for (let j = i + 1; j < chars.length; j++) {
+          const c1 = chars[i];
+          const c2 = chars[j];
+          const dx = c1.x - c2.x;
+          const dy = c1.y - c2.y;
+          const dist = Math.hypot(dx, dy);
+
+          // Soft body repulsion clearance (minimum 32px)
+          const minSpacing = 32;
+          if (dist < minSpacing && dist > 0.001) {
+            const overlap = (minSpacing - dist) / minSpacing;
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const push = overlap * 1.5;
+            if (c1.state === "walking" && c2.state === "walking") {
+              c1.x += nx * push * 0.5;
+              c1.y += ny * push * 0.5;
+              c2.x -= nx * push * 0.5;
+              c2.y -= ny * push * 0.5;
+            } else if (c1.state === "walking") {
+              c1.x += nx * push;
+              c1.y += ny * push;
+            } else if (c2.state === "walking") {
+              c2.x -= nx * push;
+              c2.y -= ny * push;
+            }
+          }
+
+          // Lateral yielding when walking paths cross
+          if (dist < 50 && c1.state === "walking" && c2.state === "walking") {
+            const nx = dx / (dist || 1);
+            const ny = dy / (dist || 1);
+            const steerFactor = 0.4 * ((50 - dist) / 50);
+            c1.x += -ny * steerFactor;
+            c1.y += nx * steerFactor;
+            c2.x -= -ny * steerFactor;
+            c2.y -= nx * steerFactor;
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 5. OBSTACLE AVOIDANCE & BOUNDARY CLAMPING
+      // -----------------------------------------------------------------------
+      chars.forEach((char) => {
+        // Soft push away from center of strategy table (rx: 92, ry: 36)
+        const normX = (char.x - TABLE_CENTER_X) / TABLE_RADIUS_X;
+        const normY = (char.y - TABLE_CENTER_Y) / TABLE_RADIUS_Y;
+        const distSq = normX * normX + normY * normY;
+        if (distSq < 1.0) {
+          const dist = Math.sqrt(distSq) || 0.001;
+          const push = (1.0 - dist) * 1.8;
+          char.x += (normX / dist) * push * TABLE_RADIUS_X * 0.12;
+          char.y += (normY / dist) * push * TABLE_RADIUS_Y * 0.12;
+        }
+
+        // Clamp inside authentic floor bounds (avoid walls & furniture borders)
+        char.x = Math.max(FLOOR_MIN_X, Math.min(FLOOR_MAX_X, char.x));
+        char.y = Math.max(FLOOR_MIN_Y, Math.min(FLOOR_MAX_Y, char.y));
+      });
+
+      // -----------------------------------------------------------------------
+      // 6. INTER-CHARACTER PROXIMITY INTERACTIONS (distance < 50px)
+      // -----------------------------------------------------------------------
+      if (currentPhase === "idle") {
+        for (let i = 0; i < chars.length; i++) {
+          for (let j = i + 1; j < chars.length; j++) {
+            const c1 = chars[i];
+            const c2 = chars[j];
+            const dist = Math.hypot(c1.x - c2.x, c1.y - c2.y);
+
+            if (dist < 50) {
+              const c1Ready = (!c1.chatCooldownTimer || c1.chatCooldownTimer <= 0) && !c1.dialogue;
+              const c2Ready = (!c2.chatCooldownTimer || c2.chatCooldownTimer <= 0) && !c2.dialogue;
+
+              if (c1Ready && c2Ready) {
+                const speaker = Math.random() < 0.5 ? c1 : c2;
+                const listener = speaker === c1 ? c2 : c1;
+
+                // Briefly turn to face each other
+                const fdx = listener.x - speaker.x;
+                const fdy = listener.y - speaker.y;
+                if (Math.abs(fdx) > Math.abs(fdy)) {
+                  speaker.facing = fdx > 0 ? "right" : "left";
+                  listener.facing = fdx > 0 ? "left" : "right";
+                } else {
+                  speaker.facing = fdy > 0 ? "down" : "up";
+                  listener.facing = fdy > 0 ? "up" : "down";
+                }
+
+                // In-character guild chatter
+                const lines = PROXIMITY_CHATTER[speaker.id] || [
+                  "Reviewing active guild operations...",
+                ];
+                const remark = lines[Math.floor(Math.random() * lines.length)];
+
+                speaker.dialogue = remark;
+                speaker.dialogueColor = speaker.color;
+                speaker.dialogueTimer = 2.5; // Clear after 2.5s to keep screen clean
+                speaker.chatCooldownTimer = 14.0;
+                listener.chatCooldownTimer = 14.0;
+
+                const speakerKey =
+                  speaker.role === "questor" ? "traveler" :
+                  speaker.avatarType === "claude" ? "claude" :
+                  speaker.avatarType === "gemini" ? "gemini" :
+                  speaker.avatarType === "specialist" ? "specialist" :
+                  speaker.avatarType === "sentinel" ? "sentinel" : "traveler";
+                arcadeAudio.playTalkChirp(speakerKey);
+              }
+            }
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 7. ENVIRONMENT RENDERING
+      // -----------------------------------------------------------------------
       const totalPayoutStr = (
         snapshot.ledger
           .filter((e) => e.kind === "payout")
           .reduce((s, e) => s + e.amountCents, 0) / 100
       ).toFixed(2);
 
-      // 1. Authentic 16-bit RPG Cozy Guild Hall Environment
-      drawGuildEnvironment(ctx, width, height, ticks, stagePhase, totalPayoutStr);
+      // 16-bit RPG Cozy Guild Hall Environment
+      drawGuildEnvironment(ctx, width, height, ticks, currentPhase, totalPayoutStr);
 
-      // 2. Dynamic Bidding Connections
-      const geminiChar = charactersRef.current.find((c) => c.id.includes("2222"));
-      const specialistChar = charactersRef.current.find((c) => c.id.includes("3333"));
+      // Dynamic Bidding Connections
+      const geminiChar = chars.find((c) => c.id.includes("2222"));
+      const specialistChar = chars.find((c) => c.id.includes("3333"));
       drawBiddingConnections(
         ctx,
-        stagePhase,
+        currentPhase,
         { x: geminiChar ? geminiChar.x : 550, y: geminiChar ? geminiChar.y : 250 },
         { x: specialistChar ? specialistChar.x : 460, y: specialistChar ? specialistChar.y : 280 },
         { x: width / 2, y: 255 },
         ticks
       );
 
-      // =======================================================================
-      // 3. CHARACTERS & ANIMATIONS
-      // =======================================================================
-      charactersRef.current.forEach((char) => {
-        const moveSpeed = (char.state === "walking" ? 3.2 : 0) * (speed === 2 ? 1.6 : 1);
-        const dx = char.targetX - char.x;
-        const dy = char.targetY - char.y;
-        const dist = Math.hypot(dx, dy);
+      // -----------------------------------------------------------------------
+      // 8. SPRITE RENDERING WITH DEPTH Y-SORTING
+      // -----------------------------------------------------------------------
+      [...chars]
+        .sort((a, b) => a.y - b.y)
+        .forEach((char) => {
+          drawArcadeCharacter(ctx, char, ticks);
+          if (char.dialogue) {
+            drawCharacterDialogue(ctx, char);
+          }
+        });
 
-        if (dist > 4 && char.state === "walking") {
-          char.x += (dx / dist) * Math.min(moveSpeed, dist);
-          char.y += (dy / dist) * Math.min(moveSpeed, dist);
-          char.facing = dx > 0 ? "right" : "left";
-        } else if (dist <= 4 && char.state === "walking") {
-          char.x = char.targetX;
-          char.y = char.targetY;
-          char.state = "idle";
-        }
-
-        // Draw authentic 16-bit Cozy RPG pixel character and floating UI
-        drawArcadeCharacter(ctx, char, ticks);
-
-        if (char.dialogue) {
-          drawCharacterDialogue(ctx, char);
-        }
-      });
-
-      // 4. Interactive Hover Highlight Brackets on Canvas
+      // Interactive Hover Highlight Brackets on Canvas
       const hovered = hoveredTargetRef.current;
       if (hovered && hovered.box) {
         drawHoverCornerBrackets(ctx, hovered.box, ticks);
@@ -855,12 +1686,12 @@ export function ArcadeRoom({
       ctx.textAlign = "left";
     };
 
-    render();
+    render(performance.now());
 
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [snapshot, stagePhase, speed]);
+  }, [snapshot]);
 
   return (
     <div className="arcade-cabinet-container">
@@ -878,7 +1709,7 @@ export function ArcadeRoom({
             style={{
               fontSize: 10,
               fontFamily: "var(--font-mono)",
-              color: "var(--accent-green-bright)",
+              color: listenToVoice ? "var(--accent-green-bright)" : "var(--accent-gold)",
               background: "var(--bg-input)",
               padding: "5px 10px",
               borderRadius: "var(--radius-xs)",
@@ -886,27 +1717,15 @@ export function ArcadeRoom({
               letterSpacing: "0.4px",
             }}
           >
-            Live Model Voices
+            {listenToVoice ? "Listening to Voices" : "Text Only Mode"}
           </span>
 
           <button
-            onClick={() => {
-              const next = speed === 1 ? 2 : 1;
-              setSpeed(next);
-              arcadeAudio.playbackRate = next === 2 ? 1.5 : 1.0;
-            }}
-            className={`arcade-btn-pill ${speed === 2 ? "active" : ""}`}
-            title="Toggle simulation speed"
+            onClick={toggleListen}
+            className={`arcade-btn-pill ${listenToVoice ? "active" : ""}`}
+            title="Toggle between listening to spoken model voice audio or reading text-only dialogue"
           >
-            {speed}x Speed
-          </button>
-
-          <button
-            onClick={toggleVoice}
-            className={`arcade-btn-pill ${voiceEnabled ? "active" : ""}`}
-            title="Toggle character voice audio"
-          >
-            {voiceEnabled ? "Voice: Speaking" : "Voice: Muted"}
+            {listenToVoice ? "Voice Audio: Active" : "Voice Audio: Off"}
           </button>
 
           <button
@@ -921,8 +1740,22 @@ export function ArcadeRoom({
             onClick={() => void runArcadeSequence()}
             className="arcade-btn-primary"
             disabled={stagePhase !== "idle"}
+            title="Simulate successful quest dispatch and payout"
           >
             Simulate Quest Dispatch
+          </button>
+
+          <button
+            onClick={() => void runArcadeSequence(
+              FAILED_DEMO_GOAL,
+              50,
+              { shouldFail: true }
+            )}
+            className="arcade-btn-danger"
+            disabled={stagePhase !== "idle"}
+            title="Simulate rejected quest with rubric failure and escrow refund"
+          >
+            Simulate Rejected Quest
           </button>
         </div>
       </div>
@@ -946,10 +1779,14 @@ export function ArcadeRoom({
             <span className="dialogue-tag">{activeSpeech.tag}:</span>
             <span className="dialogue-content">{activeSpeech.text}</span>
             <button
-              onClick={() => setActiveSpeech(null)}
+              onClick={() => {
+                arcadeAudio.stopSpeech();
+                setActiveSpeech(null);
+              }}
               className="dialogue-dismiss"
+              title="Dismiss"
             >
-              [ESC / x]
+              [x]
             </button>
           </div>
         )}
@@ -975,7 +1812,7 @@ export function ArcadeRoom({
               : "Click the Notice Board, Vault, Bookshelf, or characters to interact"}
           </span>
           <span style={{ color: "var(--accent-gold)", fontSize: 10, letterSpacing: "0.5px" }}>
-            Live Multi-Agent Dialogue
+            {listenToVoice ? "Live Spoken Voice Active" : "Text Dialogue Mode"}
           </span>
         </div>
       </div>

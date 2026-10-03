@@ -53,7 +53,12 @@ export async function readRunInput(request: Request): Promise<RunInput> {
   if (typeof value.goal !== "string" || value.goal.trim().length < 10 || value.goal.trim().length > 2000) throw new HttpError(400, "goal must contain 10 to 2000 characters");
   if (!Number.isInteger(value.rewardCents) || (value.rewardCents as number) < 50 || (value.rewardCents as number) > 500) throw new HttpError(400, "rewardCents must be an integer from 50 to 500");
   if (typeof value.idempotencyKey !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.idempotencyKey)) throw new HttpError(400, "idempotencyKey must be a UUID");
-  return { goal: value.goal.trim(), rewardCents: value.rewardCents as number, idempotencyKey: value.idempotencyKey };
+  return {
+    goal: value.goal.trim(),
+    rewardCents: value.rewardCents as number,
+    idempotencyKey: value.idempotencyKey,
+    shouldFail: typeof value.shouldFail === "boolean" ? value.shouldFail : undefined,
+  };
 }
 export function safeError(error: unknown): { status: number; message: string } {
   if (error instanceof HttpError) return { status: error.status, message: error.message };

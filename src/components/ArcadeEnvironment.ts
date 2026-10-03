@@ -1179,6 +1179,16 @@ function drawStrategyTable(
     }
   }
 
+  // Soft Crimson Warning Pulse on Rubric Rejection / Escrow Refund
+  if (stagePhase === "rejected") {
+    const pulseT = Math.sin(ticks * 0.1);
+    ctx.beginPath();
+    ctx.ellipse(stageCenterX, stageCenterY, 120 + pulseT * 4, 48 + pulseT * 2, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(201, 107, 107, ${0.4 + pulseT * 0.15})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
   // B. Round Oak Conference Table Base Shadow
   ctx.beginPath();
   ctx.ellipse(stageCenterX, stageCenterY + 12, 114, 46, 0, 0, Math.PI * 2);

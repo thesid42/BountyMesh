@@ -465,6 +465,41 @@ a {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), 0 3px 0 var(--border-outer);
 }
 
+.arcade-btn-danger {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  background: var(--accent-red);
+  border: 2px solid var(--border-outer);
+  border-radius: var(--radius-xs);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 3px 0 var(--border-outer);
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.1s ease;
+}
+
+.arcade-btn-danger:hover:not(:disabled) {
+  background: #db7a7a;
+}
+
+.arcade-btn-danger:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.arcade-btn-danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 3px 0 var(--border-outer);
+}
+
 .arcade-stage-wrap {
   position: relative;
   width: 100%;
@@ -527,6 +562,16 @@ a {
   font-weight: 600;
   color: var(--text-muted);
   cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  transition: all 0.15s ease;
+}
+
+.dialogue-dismiss:hover {
+  color: var(--text-main);
+  background: var(--bg-hover);
 }
 
 /* Event Log Ticker */

@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import type { Agent, Bounty, Snapshot } from "@/lib/contracts";
 import { DEFAULT_GOAL } from "@/lib/contracts";
-import { ArcadeRoom, ArcadeCharacter } from "@/components/ArcadeRoom";
+import { ArcadeRoom, ArcadeCharacter, FAILED_DEMO_GOAL } from "@/components/ArcadeRoom";
 import { ArcadeCharacterModal } from "@/components/ArcadeCharacterModal";
 import { ArcadeDeliverableModal } from "@/components/ArcadeDeliverableModal";
 import { arcadeAudio } from "@/lib/arcadeAudio";
@@ -39,10 +39,11 @@ function isSnapshot(value: unknown): value is Snapshot {
 }
 
 const EXAMPLE_TASKS = [
-  { label: "Market Opportunity Brief", text: DEFAULT_GOAL },
-  { label: "Competitive Pricing Matrix", text: "Analyze competitive pricing, fee structures, and escrow hold mechanics across autonomous agent marketplaces." },
-  { label: "Vector Routing Benchmark", text: "Benchmark semantic similarity thresholds and latency for pgvector matching in agent subcontracting pipelines." },
-  { label: "Code Quality Rubric", text: "Draft an automated verification checklist and rubric for code artifacts delivered by autonomous specialist agents." },
+  { label: "Market Opportunity Brief", text: DEFAULT_GOAL, shouldFail: false },
+  { label: "Competitive Pricing Matrix", text: "Analyze competitive pricing, fee structures, and escrow hold mechanics across autonomous agent marketplaces.", shouldFail: false },
+  { label: "Vector Routing Benchmark", text: "Benchmark semantic similarity thresholds and latency for pgvector matching in agent subcontracting pipelines.", shouldFail: false },
+  { label: "Code Quality Rubric", text: "Draft an automated verification checklist and rubric for code artifacts delivered by autonomous specialist agents.", shouldFail: false },
+  { label: "Flawed Deliverable (Rubric Failure)", text: FAILED_DEMO_GOAL, shouldFail: true },
 ];
 
 const BUDGET_PRESETS = [
@@ -64,6 +65,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [actionSuccess, setActionSuccess] = useState(false);
   const [taskSequenceTrigger, setTaskSequenceTrigger] = useState(0);
+  const [isFailureScenario, setIsFailureScenario] = useState(false);
 
   // Modals state
   const [inspectedAgent, setInspectedAgent] = useState<{ agent: Agent | null; char?: ArcadeCharacter } | null>(null);
@@ -116,6 +118,7 @@ export default function Home() {
       return;
     }
 
+    const isFail = isFailureScenario || cleanGoal.toLowerCase().includes("cryptographic proof") || cleanGoal.toLowerCase().includes("rubric failure") || cleanGoal.toLowerCase().includes("flawed");
     arcadeAudio.playCoin();
     setSubmitting(true);
     setActionSuccess(false);
@@ -130,6 +133,7 @@ export default function Home() {
           goal: cleanGoal,
           rewardCents,
           idempotencyKey: crypto.randomUUID(),
+          shouldFail: isFail,
         }),
       });
 
@@ -138,15 +142,20 @@ export default function Home() {
         setNeedsToken(true);
         throw new Error("Operator token required.");
       }
-      if (!response.ok) throw new Error(result.error || `Task failed (${response.status})`);
+      if (!response.ok) {
+        await refresh(true);
+        throw new Error(result.error || `Task failed (${response.status})`);
+      }
 
       if (result.snapshot) setSnapshot(result.snapshot as Snapshot);
       else await refresh(true);
 
       setActionSuccess(true);
       setGoal("");
+      setIsFailureScenario(false);
       arcadeAudio.playFanfare();
     } catch (err) {
+      await refresh(true);
       setError(err instanceof Error ? err.message : "Failed to subcontract task.");
     } finally {
       setSubmitting(false);
@@ -262,9 +271,14 @@ export default function Home() {
               rewardCents={rewardCents}
               isExecuting={submitting}
               triggerSequenceKey={taskSequenceTrigger}
+              shouldFail={isFailureScenario}
               onSelectCharacter={(agent, customChar) => setInspectedAgent({ agent, char: customChar })}
               onSelectBounty={(bounty) => setInspectedBounty(bounty)}
-              onFillGoal={(text) => setGoal(text)}
+              onFillGoal={(text) => {
+                setGoal(text);
+                const lower = text.toLowerCase();
+                setIsFailureScenario(lower.includes("cryptographic proof") || lower.includes("rubric failure") || lower.includes("flawed"));
+              }}
               onSwitchTab={(tab) => setActiveTab(tab)}
             />
 
@@ -291,12 +305,14 @@ export default function Home() {
                   <button
                     key={i}
                     type="button"
-                    className="example-chip"
+                    className={`example-chip ${ex.shouldFail ? "danger" : ""}`}
                     onClick={() => {
                       arcadeAudio.playClick();
                       setGoal(ex.text);
+                      setIsFailureScenario(Boolean(ex.shouldFail));
                     }}
                     disabled={submitting}
+                    style={ex.shouldFail ? { borderColor: "var(--accent-red)", color: "var(--accent-red)" } : undefined}
                   >
                     {ex.label}
                   </button>
@@ -309,7 +325,11 @@ export default function Home() {
                   id="task-specification"
                   className="task-textarea"
                   value={goal}
-                  onChange={(e) => setGoal(e.target.value)}
+                  onChange={(e) => {
+                    setGoal(e.target.value);
+                    const lower = e.target.value.toLowerCase();
+                    setIsFailureScenario(lower.includes("cryptographic proof") || lower.includes("rubric failure") || lower.includes("flawed"));
+                  }}
                   placeholder="Describe what research, analysis, or code artifact you want delivered by autonomous specialist agents..."
                   disabled={submitting}
                   required
@@ -320,7 +340,11 @@ export default function Home() {
                 {error && (
                   <div style={{ color: "var(--accent-red)", fontSize: 12, marginTop: 10, display: "flex", alignItems: "center", gap: 8, background: "rgba(201, 107, 107, 0.12)", padding: "10px 14px", borderRadius: "var(--radius-xs)", border: "1px solid var(--accent-red)" }}>
                     <ShieldAlert size={15} />
-                    <span>{error}</span>
+                    <span>
+                      {error.includes("RUBRIC FAILED") || error.includes("Quality review failed")
+                        ? "Task rejected by orchestrator rubric (Score 34/100). Full escrow refund returned to Traveler wallet."
+                        : error}
+                    </span>
                   </div>
                 )}
 

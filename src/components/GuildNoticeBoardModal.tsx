@@ -103,10 +103,22 @@ export function GuildNoticeBoardModal({
         </div>
 
         {/* Bottom Actions */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20, paddingTop: 14, borderTop: "2px solid var(--border-inner)" }}>
-          <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
-            {bounties.length} quests recorded in guild ledger
-          </span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20, paddingTop: 14, borderTop: "2px solid var(--border-inner)", flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+              {bounties.length} quests in ledger
+            </span>
+            <button
+              onClick={() => {
+                onLoadGoal("Provide a verified cryptographic proof and financial benchmark audit");
+              }}
+              className="arcade-btn-pill"
+              style={{ fontSize: 10, padding: "4px 8px", borderColor: "var(--accent-red)", color: "var(--accent-red)" }}
+              title="Load Flawed Deliverable (Rubric Failure) test preset"
+            >
+              Test Flawed Deliverable
+            </button>
+          </div>
 
           <button onClick={onClose} className="arcade-btn-primary">
             Close Notice Board

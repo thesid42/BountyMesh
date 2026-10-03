@@ -7,7 +7,7 @@
 
 export type ArcadeAvatarType = "questor" | "claude" | "gemini" | "specialist" | "sentinel";
 export type ArcadeFacing = "left" | "right" | "down" | "up";
-export type ArcadeState = "idle" | "walking" | "bidding" | "working" | "celebrating";
+export type ArcadeState = "idle" | "walking" | "bidding" | "working" | "celebrating" | "rejected";
 
 export interface ArcadeCharacter {
   id: string;
@@ -28,6 +28,17 @@ export interface ArcadeCharacter {
   level: number;
   gold: number;
   skills: string[];
+  // Autonomous idle and navigation properties
+  idleStationId?: string;
+  idlePauseTimer?: number;
+  dialogueTimer?: number;
+  chatCooldownTimer?: number;
+  homeX?: number;
+  homeY?: number;
+  wanderWaypoint?: { x: number; y: number } | null;
+  lastPosX?: number;
+  lastPosY?: number;
+  stuckTimer?: number;
 }
 
 export interface ArcadeDrawOptions {
@@ -135,6 +146,45 @@ export function drawPixelExclamation(
   ctx.fillRect(-1, -2, 3, 3);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(-1, -2, 1, 1);
+
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Cozy Pixel Cross / Rejection Mark Helper (No Emojis)
+// ---------------------------------------------------------------------------
+
+export function drawPixelCross(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  color = "#c96b6b"
+): void {
+  ctx.save();
+  ctx.translate(Math.round(cx), Math.round(cy));
+
+  // Small dark timber backing plate
+  ctx.fillStyle = "#261910";
+  ctx.fillRect(-5, -5, 11, 11);
+  ctx.strokeStyle = "#5c3d26";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-5, -5, 11, 11);
+
+  // Pixel cross mark
+  ctx.fillStyle = color;
+  ctx.fillRect(-3, -3, 2, 2);
+  ctx.fillRect(2, -3, 2, 2);
+  ctx.fillRect(-2, -2, 2, 2);
+  ctx.fillRect(1, -2, 2, 2);
+  ctx.fillRect(-1, -1, 3, 3);
+  ctx.fillRect(-2, 1, 2, 2);
+  ctx.fillRect(1, 1, 2, 2);
+  ctx.fillRect(-3, 2, 2, 2);
+  ctx.fillRect(2, 2, 2, 2);
+
+  // Bright core highlight
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, 1, 1);
 
   ctx.restore();
 }
@@ -393,6 +443,45 @@ function drawQuestor(
     drawPixel(ctx, 5, -25, C_FEATHER_LIGHT, scale);
     drawPixel(ctx, 6, -26, C_FEATHER_LIGHT, scale);
     drawPixel(ctx, 5, -24, C_FEATHER_MAIN, scale);
+  } else if (facing === "up") {
+    // Back View (Facing North / Away from camera)
+    // 1. Full cloak back
+    drawPixelRect(ctx, -6, -13, 13, 11, C_CLOAK_MAIN, scale);
+    drawPixelRect(ctx, -7, -3, 15, 3, C_CLOAK_SHADOW, scale);
+    drawPixelRect(ctx, -2, -13, 1, 10, C_CLOAK_SHADOW, scale);
+    drawPixelRect(ctx, 2, -13, 1, 10, C_CLOAK_SHADOW, scale);
+    drawPixelRect(ctx, -5, -13, 1, 9, C_CLOAK_LIGHT, scale);
+
+    // 2. Legs / Boots from behind
+    const leftBootY = isWalking && leftLegOffset < 0 ? -1 : 0;
+    const rightBootY = isWalking && rightLegOffset < 0 ? -1 : 0;
+    drawPixelRect(ctx, -4, -6 + leftBootY, 3, 4, C_LEATHER_MAIN, scale);
+    drawPixelRect(ctx, -4, -2 + leftBootY, 3, 2, C_LEATHER_DARK, scale);
+    drawPixelRect(ctx, 2, -6 + rightBootY, 3, 4, C_LEATHER_MAIN, scale);
+    drawPixelRect(ctx, 2, -2 + rightBootY, 3, 2, C_LEATHER_DARK, scale);
+
+    // 3. Arms
+    if (isCelebrating) {
+      drawPixelRect(ctx, -7, -19, 2, 7, C_CLOAK_MAIN, scale);
+      drawPixelRect(ctx, 6, -19, 2, 7, C_CLOAK_MAIN, scale);
+      drawPixelRect(ctx, -7, -21, 2, 2, C_SKIN_MAIN, scale);
+      drawPixelRect(ctx, 6, -21, 2, 2, C_SKIN_MAIN, scale);
+    } else {
+      drawPixelRect(ctx, -7, -12 + armOffset, 2, 6, C_CLOAK_MAIN, scale);
+      drawPixelRect(ctx, 6, -12 - armOffset, 2, 6, C_CLOAK_MAIN, scale);
+    }
+
+    // 4. Back of head & hair at nape
+    drawPixelRect(ctx, -4, -18, 9, 5, C_HAIR, scale);
+
+    // 5. Feathered traveler cap from behind
+    drawPixelRect(ctx, -5, -20, 11, 2, C_CAP_DARK, scale);
+    drawPixelRect(ctx, -4, -23, 9, 3, C_CAP_MAIN, scale);
+    drawPixelRect(ctx, -3, -24, 7, 1, C_CAP_LIGHT, scale);
+    drawPixel(ctx, 2, -22, C_FEATHER_TIP, scale);
+    drawPixel(ctx, 3, -23, C_FEATHER_MAIN, scale);
+    drawPixel(ctx, 4, -24, C_FEATHER_LIGHT, scale);
+    drawPixel(ctx, 5, -25, C_FEATHER_LIGHT, scale);
   } else {
     // Side View (facing left or right)
     // 1. Cloak flowing behind
@@ -600,6 +689,44 @@ function drawClaude(
       C_GEM_CYAN,
       scale
     );
+  } else if (facing === "up") {
+    // Back View (Facing North / Away from camera)
+    // 1. Long wizard robe back
+    drawPixelRect(ctx, -6, -14, 13, 13, C_ROBE_MAIN, scale);
+    drawPixelRect(ctx, -7, -3, 15, 3, C_ROBE_SHADOW, scale);
+    drawPixelRect(ctx, -6, -1, 13, 1, C_ROBE_DEEP, scale);
+    drawPixelRect(ctx, -6, -2, 13, 1, C_GOLD_MAIN, scale);
+    drawPixelRect(ctx, -2, -14, 1, 12, C_ROBE_SHADOW, scale);
+    drawPixelRect(ctx, 2, -14, 1, 12, C_ROBE_SHADOW, scale);
+
+    // Subtle feet peeking under robe hem
+    drawPixelRect(ctx, -3 + legOffset, 0, 2, 1, "#18101a", scale);
+    drawPixelRect(ctx, 2 - legOffset, 0, 2, 1, "#18101a", scale);
+
+    // 2. Wide wizard robe sleeves
+    drawPixelRect(ctx, -8, -13, 3, 8, C_ROBE_SHADOW, scale);
+    drawPixelRect(ctx, 6, -13, 3, 8, C_ROBE_SHADOW, scale);
+
+    // 3. Cowl / Hood from behind
+    drawPixelRect(ctx, -5, -23, 11, 10, C_ROBE_MAIN, scale);
+    drawPixelRect(ctx, -4, -25, 9, 3, C_ROBE_LIGHT, scale);
+    drawPixelRect(ctx, -2, -27, 5, 3, C_ROBE_MAIN, scale);
+    drawPixel(ctx, 0, -28, C_ROBE_SHADOW, scale);
+    // Silver hair peek
+    drawPixelRect(ctx, -3, -14, 7, 2, C_SILVER_MAIN, scale);
+
+    // 4. Arcane staff held on right
+    const staffX = 7;
+    drawPixelRect(ctx, staffX, -22, 2, 23, C_WOOD_MAIN, scale);
+    drawPixelRect(ctx, staffX + 1, -22, 1, 23, C_WOOD_SHADOW, scale);
+    const gemX = staffX;
+    const gemY = -26;
+    drawPixelRect(ctx, gemX - 1, gemY - 1, 4, 4, C_GEM_MAIN, scale);
+    drawPixel(ctx, gemX, gemY, C_GEM_LIGHT, scale);
+    drawPixel(ctx, gemX, gemY - 2, C_GEM_CYAN, scale);
+    if (gemGlow > 0.7) {
+      drawPixel(ctx, gemX + 2, gemY, C_GEM_CYAN, scale);
+    }
   } else {
     // Side View (facing left or right)
 
@@ -771,6 +898,44 @@ function drawGemini(
     drawPixel(ctx, -2, -18, "#ffffff", scale); // Glint
     drawPixel(ctx, 2, -17, "#e0f2fe", scale);
     drawPixel(ctx, 2, -18, "#ffffff", scale); // Glint
+  } else if (facing === "up") {
+    // Back View (Facing North / Away from camera)
+    // 1. Trousers & shoes
+    const leftBootY = isWalking && leftLegOffset < 0 ? -1 : 0;
+    const rightBootY = isWalking && rightLegOffset < 0 ? -1 : 0;
+    drawPixelRect(ctx, -4, -6 + leftBootY, 3, 4, C_PANTS, scale);
+    drawPixelRect(ctx, -4, -2 + leftBootY, 3, 2, C_SHOES, scale);
+    drawPixelRect(ctx, 2, -6 + rightBootY, 3, 4, C_PANTS, scale);
+    drawPixelRect(ctx, 2, -2 + rightBootY, 3, 2, C_SHOES, scale);
+
+    // 2. Scholar coat back & split tails
+    drawPixelRect(ctx, -5, -13, 11, 7, C_COAT_MAIN, scale);
+    drawPixelRect(ctx, -5, -6, 11, 2, C_COAT_SHADOW, scale);
+    drawPixelRect(ctx, -6, -4, 4, 2, C_COAT_DARK, scale); // Left coat tail
+    drawPixelRect(ctx, 3, -4, 4, 2, C_COAT_DARK, scale);  // Right coat tail
+    drawPixelRect(ctx, 0, -13, 1, 8, C_COAT_SHADOW, scale); // Center seam
+
+    // High collar
+    drawPixelRect(ctx, -2, -14, 5, 1, C_SHIRT, scale);
+
+    // Diagonal satchel strap across back
+    drawPixel(ctx, -3, -13, C_STRAP, scale);
+    drawPixel(ctx, -2, -12, C_STRAP, scale);
+    drawPixel(ctx, -1, -11, C_STRAP, scale);
+    drawPixel(ctx, 0, -10, C_STRAP, scale);
+    drawPixel(ctx, 1, -9, C_STRAP, scale);
+    drawPixel(ctx, 2, -8, C_STRAP, scale);
+    drawPixel(ctx, 3, -7, C_STRAP, scale);
+    drawPixelRect(ctx, 3, -8, 3, 4, C_SATCHEL, scale);
+
+    // 3. Arms
+    drawPixelRect(ctx, -6, -12, 2, 6, C_COAT_MAIN, scale);
+    drawPixelRect(ctx, 5, -12, 2, 6, C_COAT_MAIN, scale);
+
+    // 4. Back of head & chestnut hair
+    drawPixelRect(ctx, -4, -23, 9, 6, C_HAIR, scale);
+    drawPixelRect(ctx, -3, -24, 7, 2, C_HAIR_LIGHT, scale);
+    drawPixelRect(ctx, -3, -17, 7, 3, C_HAIR, scale);
   } else {
     // Side View (facing left or right)
     // 1. Trousers & shoes
@@ -917,6 +1082,45 @@ function drawSpecialist(
     drawPixel(ctx, 3, -24, C_FEATHER_GOLD, scale);
     drawPixel(ctx, 4, -25, C_FEATHER_RED, scale);
     drawPixel(ctx, 5, -26, C_FEATHER_RED, scale);
+  } else if (facing === "up") {
+    // Back View (Facing North / Away from camera)
+    // 1. Woodland trousers & boots
+    const leftBootY = isWalking && leftLegOffset < 0 ? -1 : 0;
+    const rightBootY = isWalking && rightLegOffset < 0 ? -1 : 0;
+    drawPixelRect(ctx, -4, -6 + leftBootY, 3, 4, C_PANTS, scale);
+    drawPixelRect(ctx, -4, -2 + leftBootY, 3, 2, C_BOOTS, scale);
+    drawPixelRect(ctx, 2, -6 + rightBootY, 3, 4, C_PANTS, scale);
+    drawPixelRect(ctx, 2, -2 + rightBootY, 3, 2, C_BOOTS, scale);
+
+    // 2. Hunter green tunic back
+    drawPixelRect(ctx, -5, -13, 11, 7, C_GREEN_MAIN, scale);
+    drawPixelRect(ctx, -5, -6, 11, 2, C_GREEN_SHADOW, scale);
+    drawPixelRect(ctx, -4, -7, 9, 2, C_LEATHER_SHADOW, scale);
+
+    // 3. Quiver strapped across upper back (prominent view)
+    drawPixelRect(ctx, -1, -15, 5, 8, C_QUIVER, scale);
+    drawPixelRect(ctx, -2, -16, 5, 2, C_LEATHER_SHADOW, scale);
+    drawPixel(ctx, -1, -18, C_FLETCHING, scale);
+    drawPixel(ctx, 1, -19, C_FLETCHING, scale);
+    drawPixel(ctx, 3, -18, C_FLETCHING, scale);
+    drawPixel(ctx, 0, -17, C_ARROW_SHAFT, scale);
+    drawPixel(ctx, 2, -17, C_ARROW_SHAFT, scale);
+
+    // 4. Arms & Bracers
+    drawPixelRect(ctx, -7, -13, 2, 4, C_GREEN_MAIN, scale);
+    drawPixelRect(ctx, 6, -13, 2, 4, C_GREEN_MAIN, scale);
+    drawPixelRect(ctx, -7, -9, 2, 3, C_LEATHER_MAIN, scale);
+    drawPixelRect(ctx, 6, -9, 2, 3, C_LEATHER_MAIN, scale);
+
+    // 5. Back of head & hunter cap with feather
+    drawPixelRect(ctx, -4, -18, 9, 4, C_HAIR, scale);
+    drawPixelRect(ctx, -5, -20, 11, 2, C_GREEN_DARK, scale);
+    drawPixelRect(ctx, -4, -23, 9, 3, C_GREEN_MAIN, scale);
+    drawPixelRect(ctx, -3, -24, 7, 1, C_GREEN_LIGHT, scale);
+    drawPixel(ctx, 1, -22, C_BRASS, scale);
+    drawPixel(ctx, 2, -23, C_FEATHER_GOLD, scale);
+    drawPixel(ctx, 3, -24, C_FEATHER_GOLD, scale);
+    drawPixel(ctx, 4, -25, C_FEATHER_RED, scale);
   } else {
     // Side View (facing left or right)
     // 1. Quiver strapped across back
@@ -1067,6 +1271,45 @@ function drawSentinel(
     drawPixelRect(ctx, -1, -27, 3, 4, C_PLUME_MAIN, scale);
     drawPixelRect(ctx, -2, -26, 1, 3, C_PLUME_SHADOW, scale);
     drawPixelRect(ctx, 0, -28, 2, 2, C_PLUME_MAIN, scale);
+  } else if (facing === "up") {
+    // Back View (Facing North / Away from camera)
+    // 1. Armored Sabatons & Greaves
+    const leftBootY = isWalking && leftLegOffset < 0 ? -1 : 0;
+    const rightBootY = isWalking && rightLegOffset < 0 ? -1 : 0;
+    drawPixelRect(ctx, -4, -6 + leftBootY, 3, 4, C_STEEL_MAIN, scale);
+    drawPixelRect(ctx, -4, -2 + leftBootY, 3, 2, C_STEEL_SHADOW, scale);
+    drawPixelRect(ctx, 2, -6 + rightBootY, 3, 4, C_STEEL_MAIN, scale);
+    drawPixelRect(ctx, 2, -2 + rightBootY, 3, 2, C_STEEL_SHADOW, scale);
+
+    // 2. Iron backplate & tabard back
+    drawPixelRect(ctx, -5, -13, 11, 9, C_STEEL_MAIN, scale);
+    drawPixelRect(ctx, -4, -13, 9, 7, C_TABARD_MAIN, scale);
+    drawPixelRect(ctx, -4, -7, 9, 2, C_TABARD_SHADOW, scale);
+    drawPixelRect(ctx, -5, -8, 11, 3, C_STEEL_SHADOW, scale);
+
+    // 3. Pauldrons from behind
+    drawPixelRect(ctx, -7, -14, 3, 5, C_STEEL_MAIN, scale);
+    drawPixelRect(ctx, 5, -14, 3, 5, C_STEEL_MAIN, scale);
+
+    // 4. Heater Shield on left arm seen from behind
+    const shieldX = -9;
+    const shieldY = -12;
+    drawPixelRect(ctx, shieldX, shieldY, 4, 8, "#2d1c13", scale);
+    drawPixelRect(ctx, shieldX + 1, shieldY + 2, 2, 2, "#7c4623", scale);
+    drawPixelRect(ctx, shieldX + 1, shieldY + 5, 2, 2, "#7c4623", scale);
+
+    // Right arm
+    drawPixelRect(ctx, 6, -9, 2, 4, C_STEEL_MAIN, scale);
+
+    // 5. Back of Knight Helm & Scarlet Plume
+    drawPixelRect(ctx, -5, -23, 11, 9, C_STEEL_MAIN, scale);
+    drawPixelRect(ctx, -4, -24, 9, 2, C_STEEL_LIGHT, scale);
+    drawPixelRect(ctx, 0, -24, 1, 9, C_STEEL_GLEAM, scale);
+    drawPixelRect(ctx, -5, -15, 11, 2, C_STEEL_SHADOW, scale);
+    // Scarlet plume from back
+    drawPixelRect(ctx, -1, -27, 3, 4, C_PLUME_MAIN, scale);
+    drawPixelRect(ctx, -2, -26, 1, 3, C_PLUME_SHADOW, scale);
+    drawPixelRect(ctx, 0, -28, 2, 2, C_PLUME_MAIN, scale);
   } else {
     // Side View (facing left or right)
     // 1. Armored greaves in walk stride
@@ -1144,14 +1387,16 @@ export function drawArcadeCharacter(
   // 2. Vertical bobbing & hop calculations
   const isWalking = char.state === "walking";
   const isCelebrating = char.state === "celebrating";
+  const isRejected = char.state === "rejected";
 
   // Walking bob vs. breathing idle bob
   const walkCycle = ticks * 0.35;
   const walkBob = isWalking ? Math.abs(Math.sin(walkCycle)) * 2 : 0;
   const idleBob = !isWalking ? Math.sin(ticks * 0.08) * 1.0 : 0;
   const hopY = isCelebrating ? -Math.abs(Math.sin(ticks * 0.28)) * 5 : 0;
+  const slumpY = isRejected ? 2 : 0;
 
-  const charY = Math.round(char.y - walkBob + idleBob + hopY);
+  const charY = Math.round(char.y - walkBob + idleBob + hopY + slumpY);
 
   // 3. Sprite Matrix Transformation
   ctx.save();
@@ -1252,6 +1497,12 @@ export function drawArcadeCharacter(
     drawPixelExclamation(ctx, char.x, char.y - 58, "#facc15");
     drawPixelStar(ctx, char.x + 18, starY3, 6, "#ffd700");
     drawPixelStar(ctx, char.x, starY2 - 8, 5, "#fff3a8");
+  }
+
+  // 4b. Rejected State Effects (Pixel Cross, No Emojis)
+  if (isRejected) {
+    const markY = char.y - 56 + Math.sin(ticks * 0.1) * 2;
+    drawPixelCross(ctx, char.x, markY, "#c96b6b");
   }
 
   // 5. Floating Nameplate & Balance Tag below Character (Unified Compact Badge)

@@ -44,7 +44,7 @@ async function cancelHold(bounty: Bounty): Promise<void> {
   if (pi.status === "requires_capture") await stripe.paymentIntents.cancel(pi.id, {}, { idempotencyKey: stableKey("bm_release", bounty.id) });
   else if (pi.status !== "canceled") throw new Error("Stripe escrow can no longer be safely released");
 }
-async function progress(run: Run, bounty: Bounty, goal: string): Promise<Bounty> {
+async function progress(run: Run, bounty: Bounty, goal: string, shouldFail = false): Promise<Bounty> {
   let b = bounty;
   if (b.status === "funding") {
     if (getConfig().payments === "stripe" && Date.now() - Date.parse(b.updatedAt) > 23 * 60 * 60 * 1000) throw new Error("Funding requires operator review because the Stripe retry window may have expired");
@@ -65,13 +65,24 @@ async function progress(run: Run, bounty: Bounty, goal: string): Promise<Bounty>
   if (getConfig().mode === "demo") await pause(500);
   if (b.status === "claimed") {
     const deliverable = getConfig().mode === "demo"
-      ? { summary: `A focused brief and visualization plan for: ${goal.slice(0, 100)}`, kind: "markdown" as const, content: `## Research brief\n\nThis demo assignment turns the requested goal into a compact research brief. It identifies the decision to support, the audience, and the evidence that should be gathered before publication.\n\n## Visualization specification\n\n- **Chart:** horizontal ranked bar chart, with one bar per opportunity.\n- **Measures:** estimated market demand, execution effort, and confidence; show confidence in a separate column.\n- **Encoding:** sort by demand-to-effort ratio and use a restrained accent color for the top three.\n- **Caveat:** populate values from cited, current sources before using this as a factual market estimate.\n\n## Suggested next step\n\nCollect comparable evidence for each opportunity, record source dates, then replace the illustrative ranking with measured values.` }
+      ? (shouldFail
+          ? {
+              summary: `Cryptographic proof and benchmark audit for: ${goal.slice(0, 100)}`,
+              kind: "markdown" as const,
+              content: `## Cryptographic Proof & Financial Benchmark Audit\n\n- Signature Proof: FAILED (Truncated hash block: 0x8f2a...invalid)\n- Cosine Alignment: 38% (Under required threshold: 85%)\n- Benchmark Tables: Hallucinated data detected in columns B-D.\n\n## Verification Note\n\nArtifact fails automated verification rubric criteria 2, 4, and 5. Escrow release denied.`,
+            }
+          : { summary: `A focused brief and visualization plan for: ${goal.slice(0, 100)}`, kind: "markdown" as const, content: `## Research brief\n\nThis demo assignment turns the requested goal into a compact research brief. It identifies the decision to support, the audience, and the evidence that should be gathered before publication.\n\n## Visualization specification\n\n- **Chart:** horizontal ranked bar chart, with one bar per opportunity.\n- **Measures:** estimated market demand, execution effort, and confidence; show confidence in a separate column.\n- **Encoding:** sort by demand-to-effort ratio and use a restrained accent color for the top three.\n- **Caveat:** populate values from cited, current sources before using this as a factual market estimate.\n\n## Suggested next step\n\nCollect comparable evidence for each opportunity, record source dates, then replace the illustrative ranking with measured values.` })
       : await produceDeliverable(goal, b.description);
     b = await transitionBounty(b.id, "claimed", "delivered", { deliverable });
     await log(run.id, b.id, "delivery", "Worker submitted a text deliverable and visualization specification.", b.workerId);
   }
   if (getConfig().mode === "demo") await pause(500);
   if (b.status === "delivered") {
+    if (shouldFail) {
+      const failedReview = "RUBRIC FAILED: Score 34/100 · Missing evidence and failed cryptographic proof. Escrow payout denied.";
+      await log(run.id, b.id, "verification", failedReview, ORCHESTRATOR_ID);
+      throw new Error(`Quality review failed: ${failedReview}`);
+    }
     const review = getConfig().mode === "demo" ? "The deliverable addresses the assigned task, distinguishes assumptions from verified evidence, and includes a usable visualization specification." : await reviewDeliverable(goal, b.description, b.deliverable!);
     b = await transitionBounty(b.id, "delivered", "verified", { review });
     await log(run.id, b.id, "verification", review, ORCHESTRATOR_ID);
@@ -114,7 +125,7 @@ async function processRun(input: RunInput, run: Run): Promise<Run> {
   }
   if (run.status !== "running") { await updateRun(run.id, "running"); run = { ...run, status: "running", error: null }; }
   try {
-    bounty = await progress(run, bounty, input.goal);
+    bounty = await progress(run, bounty, input.goal, Boolean(input.shouldFail));
     if (bounty.status !== "paid") throw new Error("Bounty processing did not reach a paid state");
     await updateRun(run.id, "completed");
     return { ...run, status: "completed", error: null, updatedAt: new Date().toISOString() };
@@ -130,11 +141,17 @@ async function processRun(input: RunInput, run: Run): Promise<Run> {
     if (bounty.status !== "settling" && !(bounty.status === "funding" && getConfig().mode === "live")) {
       try {
         await cancelHold(bounty);
-        await releaseBounty(bounty.id, bounty.paymentIntentId ?? `demo_pi_${bounty.id}`, getConfig().payments, "Work failed before settlement");
+        await releaseBounty(bounty.id, bounty.paymentIntentId ?? `demo_pi_${bounty.id}`, getConfig().payments, message);
       } catch (releaseError) { releaseNeedsReview = true; await log(run.id, bounty.id, "error", "The run failed and escrow release needs operator attention."); }
     }
     const reviewRequired = message.includes("operator review");
-    const publicError = releaseNeedsReview ? "The run failed; escrow release needs operator attention." : bounty.status === "settling" ? (reviewRequired ? "Settlement needs operator review before it can be retried." : "Settlement is pending recovery. Retry with the same idempotency key.") : bounty.status === "funding" ? (reviewRequired ? "Funding needs operator review before it can be retried." : "Funding did not complete. Retry with the same idempotency key.") : "The run failed; any confirmed escrow was released.";
+    const publicError = releaseNeedsReview
+      ? "The run failed; escrow release needs operator attention."
+      : bounty.status === "settling"
+        ? (reviewRequired ? "Settlement needs operator review before it can be retried." : "Settlement is pending recovery. Retry with the same idempotency key.")
+        : bounty.status === "funding"
+          ? (reviewRequired ? "Funding needs operator review before it can be retried." : "Funding did not complete. Retry with the same idempotency key.")
+          : (message.includes("Quality review failed") ? message : "The run failed; any confirmed escrow was released.");
     await log(run.id, bounty.id, "error", publicError);
     await updateRun(run.id, "failed", publicError);
     return { ...run, status: "failed", error: publicError, updatedAt: new Date().toISOString() };

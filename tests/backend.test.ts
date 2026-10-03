@@ -92,3 +92,27 @@ test("demo run executes its full lifecycle and repeated key does not pay twice",
   await assert.rejects(runWork({ ...input, rewardCents: 100 }), (error) => error instanceof HttpError && error.status === 409);
 }));
 
+test("flawed work fails rubric verification and issues an escrow refund instead of worker payout", async () => inFreshState(async () => {
+  const input = {
+    goal: "Provide a verified cryptographic proof and financial benchmark audit",
+    rewardCents: 50,
+    idempotencyKey: randomUUID(),
+    shouldFail: true,
+  };
+  const run = await runWork(input);
+  assert.equal(run.status, "failed");
+  assert.ok(run.error?.includes("Quality review failed"));
+  const snapshot = await getSnapshot();
+  const bounty = snapshot.bounties[0];
+  assert.equal(bounty.status, "failed");
+  assert.equal(bounty.escrowStatus, "released");
+  assert.ok(bounty.review?.includes("RUBRIC FAILED: Score 34/100"));
+  const orchestrator = snapshot.agents.find((agent) => agent.id === ORCHESTRATOR_ID)!;
+  assert.equal(orchestrator.balanceCents, 1000);
+  const worker = snapshot.agents.find((agent) => agent.id === WORKER_ID)!;
+  assert.equal(worker.balanceCents, 0);
+  const refundEntry = snapshot.ledger.find((entry) => entry.kind === "refund");
+  assert.ok(refundEntry);
+  assert.equal(refundEntry.amountCents, 50);
+}));
+

@@ -93,6 +93,7 @@ export interface RunInput {
   goal: string;
   rewardCents: number;
   idempotencyKey: string;
+  shouldFail?: boolean;
 }
 
 export const DEFAULT_GOAL = "Analyze the top opportunities for an AI agent marketplace and create a concise market brief with a data visualization specification.";

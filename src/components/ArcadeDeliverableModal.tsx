@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Copy, Check, CheckCircle2 } from "lucide-react";
+import { X, Copy, Check, CheckCircle2, ShieldAlert } from "lucide-react";
 import type { Bounty } from "@/lib/contracts";
 
 interface ArcadeDeliverableModalProps {
@@ -26,8 +26,14 @@ export function ArcadeDeliverableModal({ bounty, onClose }: ArcadeDeliverableMod
         {/* Header */}
         <div className="rpg-dialog-header">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span className="rpg-badge" style={{ background: "var(--accent-green)", color: "var(--border-outer)" }}>
-              {bounty.status === "paid" ? "CLEARED" : bounty.status.toUpperCase()}
+            <span
+              className="rpg-badge"
+              style={{
+                background: bounty.status === "failed" ? "var(--accent-red)" : "var(--accent-green)",
+                color: bounty.status === "failed" ? "#ffffff" : "var(--border-outer)",
+              }}
+            >
+              {bounty.status === "paid" ? "CLEARED" : bounty.status === "failed" ? "REJECTED (REFUNDED)" : bounty.status.toUpperCase()}
             </span>
             <div>
               <h2 className="rpg-name">{bounty.title}</h2>
@@ -77,12 +83,39 @@ export function ArcadeDeliverableModal({ bounty, onClose }: ArcadeDeliverableMod
         {/* Rubric Audit Verdict */}
         {bounty.review && (
           <div style={{ marginTop: 16 }}>
-            <span className="rpg-section-title" style={{ color: "var(--accent-green)" }}>
+            <span
+              className="rpg-section-title"
+              style={{ color: bounty.status === "failed" ? "var(--accent-red)" : "var(--accent-green)" }}
+            >
               Rubric Audit Verdict
             </span>
-            <div style={{ background: "rgba(132, 169, 110, 0.12)", border: "2px solid var(--border-outer)", borderRadius: 4, padding: 12, fontSize: 13, color: "var(--text-main)", lineHeight: 1.55 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, fontWeight: 700, color: "var(--accent-green-bright)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
-                <CheckCircle2 size={14} /> Verification Passed · 100% Rubric Satisfaction
+            <div
+              style={{
+                background: bounty.status === "failed" ? "rgba(201, 107, 107, 0.12)" : "rgba(132, 169, 110, 0.12)",
+                border: `2px solid ${bounty.status === "failed" ? "var(--accent-red)" : "var(--border-outer)"}`,
+                borderRadius: 4,
+                padding: 12,
+                fontSize: 13,
+                color: "var(--text-main)",
+                lineHeight: 1.55,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginBottom: 4,
+                  fontWeight: 700,
+                  color: bounty.status === "failed" ? "var(--accent-red)" : "var(--accent-green-bright)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                }}
+              >
+                {bounty.status === "failed" ? <ShieldAlert size={14} /> : <CheckCircle2 size={14} />}
+                {bounty.status === "failed"
+                  ? "Verification Failed · Rubric Unsatisfied (Escrow Refunded)"
+                  : "Verification Passed · 100% Rubric Satisfaction"}
               </div>
               {bounty.review}
             </div>

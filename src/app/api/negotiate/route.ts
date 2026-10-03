@@ -78,11 +78,33 @@ async function synthesizeVoiceWithGemini(
 async function generateDialogueWithGemini(
   goal: string,
   rewardFormatted: string,
-  apiKey: string
+  apiKey: string,
+  shouldFail = false
 ): Promise<Omit<NegotiationTurn, "audioBase64" | "audioMimeType">[] | null> {
   const models = ["gemini-3.8-flash", "gemini-flash-latest"];
 
-  const prompt = `You are orchestrating a live multi-agent conversation in the BountyMesh guild between autonomous AI agents.
+  const prompt = shouldFail
+    ? `You are orchestrating a live multi-agent conversation in the BountyMesh guild between autonomous AI agents for a high-stakes, strict-rubric quest.
+Client Quest Objective: "${goal}"
+Escrow Stake: ${rewardFormatted}
+
+The participating agents talking to each other are:
+1. "traveler" (Traveler / Client who specifies strict requirements, demands verifiable proof with zero hallucination, and locks ${rewardFormatted} in escrow)
+2. "claude" (Claude Orchestrator who establishes the strict verification rubric, warns about high standards, and invites specialist bids)
+3. "gemini" (Gemini Scholar specialist worker who attempts the high-difficulty task, claiming capability fit, but taking on significant risk)
+4. "specialist" (Specialist Ranger worker who cautions that error margins are high and rubric failure is likely)
+5. "claude" (Claude Orchestrator who awards the contract to Gemini Scholar for ${rewardFormatted} with a firm reminder that escrow is only released if rubric verification passes 100%)
+6. "claude" (Claude Orchestrator quality review verdict: "Quality review failed. The submitted artifact failed rubric verification. Payout denied. Refunding escrow to Traveler.")
+
+Return ONLY a valid JSON array of 6 objects (no markdown, no emojis). Each object must have:
+- "id": string ("turn-1", "turn-2", ..., "turn-6")
+- "speaker": exactly "traveler", "claude", "gemini", or "specialist"
+- "speakerName": string
+- "voice": "Kore" | "Charon" | "Puck" | "Fenrir"
+- "text": string (the in-character dialogue line speaking to the others)
+- "dialogueBadge": string (short 4-6 word summary for speech bubble)
+- "color": hex color code`
+    : `You are orchestrating a live multi-agent conversation in the BountyMesh guild between autonomous AI agents.
 Client Quest Objective: "${goal}"
 Escrow Reward: ${rewardFormatted}
 
@@ -181,7 +203,66 @@ Return ONLY a valid JSON array of 5 objects (no markdown, no emojis). Each objec
 }
 
 // Default fallback turns
-function getDefaultTurns(goal: string, rewardFormatted: string): NegotiationTurn[] {
+function getDefaultTurns(goal: string, rewardFormatted: string, shouldFail = false): NegotiationTurn[] {
+  if (shouldFail) {
+    return [
+      {
+        id: "turn-1",
+        speaker: "traveler",
+        speakerName: "Traveler",
+        voice: "Kore",
+        text: `Traveler seeking guild assistance for this quest: ${goal}. Strict rubric verification is required; locking ${rewardFormatted} in verified escrow.`,
+        dialogueBadge: `QUEST: Cryptographic Audit [${rewardFormatted}]`,
+        color: "#d4b86a",
+      },
+      {
+        id: "turn-2",
+        speaker: "claude",
+        speakerName: "Claude Orchestrator",
+        voice: "Charon",
+        text: `Quest directive logged. Strict rubric enforcement active: mathematical proof and empirical benchmark validation required. Requesting specialist bids.`,
+        dialogueBadge: "Strict rubric verification active...",
+        color: "#8f79a6",
+      },
+      {
+        id: "turn-3",
+        speaker: "gemini",
+        speakerName: "Gemini Scholar",
+        voice: "Puck",
+        text: `Gemini Scholar bidding. Attempting cryptographic proof generation and financial benchmark data synthesis under strict rubric.`,
+        dialogueBadge: "BID: 91.2% Fit · Attempting proof",
+        color: "#6d8e9c",
+      },
+      {
+        id: "turn-4",
+        speaker: "specialist",
+        speakerName: "Specialist Ranger",
+        voice: "Fenrir",
+        text: `Specialist Ranger bidding. Warning: cryptographic proofs have a high error rate. Strict rubric threshold set to 85.0%.`,
+        dialogueBadge: "BID: 86.5% Fit · Rubric warning",
+        color: "#84a96e",
+      },
+      {
+        id: "turn-5",
+        speaker: "claude",
+        speakerName: "Claude Orchestrator",
+        voice: "Charon",
+        text: `Contract awarded to Gemini Scholar for ${rewardFormatted}. Escrow secured in Vault. Deliverable must satisfy verification rubric.`,
+        dialogueBadge: "Awarded to Gemini (Strict Rubric)",
+        color: "#84a96e",
+      },
+      {
+        id: "turn-6",
+        speaker: "claude",
+        speakerName: "Claude Orchestrator",
+        voice: "Charon",
+        text: "Quality review failed. The submitted artifact failed rubric verification. Payout denied. Refunding escrow to Traveler.",
+        dialogueBadge: "RUBRIC FAILED: Score 34/100 · Missing evidence",
+        color: "#c96b6b",
+      },
+    ];
+  }
+
   return [
     {
       id: "turn-1",
@@ -237,6 +318,8 @@ export async function POST(request: Request) {
     const goal = typeof body.goal === "string" && body.goal.trim() ? body.goal.trim() : "Market analysis and visualization brief";
     const rewardCents = typeof body.rewardCents === "number" && body.rewardCents >= 50 ? body.rewardCents : 50;
     const rewardFormatted = `$${(rewardCents / 100).toFixed(2)}`;
+    const shouldFail = Boolean(body.shouldFail);
+    const includeAudio = Boolean(body.audio ?? body.includeAudio ?? false);
 
     const clientApiKey = request.headers.get("x-gemini-key")?.trim() || "";
     const geminiKey = clientApiKey || getEnv("GEMINI_API_KEY");
@@ -246,7 +329,7 @@ export async function POST(request: Request) {
 
     // 1. Generate in-character dialogue lines with Gemini
     if (geminiKey) {
-      const generated = await generateDialogueWithGemini(goal, rewardFormatted, geminiKey);
+      const generated = await generateDialogueWithGemini(goal, rewardFormatted, geminiKey, shouldFail);
       if (generated && generated.length >= 4) {
         turns = generated as NegotiationTurn[];
         provider = "gemini-live";
@@ -254,10 +337,10 @@ export async function POST(request: Request) {
     }
 
     if (turns.length === 0) {
-      turns = getDefaultTurns(goal, rewardFormatted);
+      turns = getDefaultTurns(goal, rewardFormatted, shouldFail);
     }
 
-    // 2. Synthesize audio for each character turn using Google Gemini TTS!
+    // 2. Synthesize spoken voice audio for all character turns using Google Gemini TTS
     if (geminiKey) {
       const voiceMap: Record<NegotiationTurn["speaker"], "Kore" | "Charon" | "Puck" | "Fenrir"> = {
         traveler: "Kore",

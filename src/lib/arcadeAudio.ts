@@ -1,12 +1,15 @@
 // Pure Web Audio API Sound Synthesizer, Live Model Voice Player & Audio Engine
 // Supports Google Gemini 24kHz Audio & WAV Streams, 100% reliable, zero emojis
 
+export type ArcadeSpeaker = "traveler" | "claude" | "gemini" | "specialist" | "sentinel";
+
 class ArcadeAudioEngine {
   private ctx: AudioContext | null = null;
   public enabled: boolean = true;
   public voiceEnabled: boolean = true;
   public playbackRate: number = 1.0;
   private currentSource: AudioBufferSourceNode | null = null;
+  private activeSpeechResolver: (() => void) | null = null;
 
   public initCtx(): AudioContext | null {
     if (typeof window === "undefined") return null;
@@ -25,7 +28,7 @@ class ArcadeAudioEngine {
   }
 
   // Soft retro character voice chatter (Zelda / Undertale / RPG style)
-  playTalkChirp(speaker: "traveler" | "claude" | "gemini" | "specialist") {
+  playTalkChirp(speaker: ArcadeSpeaker) {
     if (!this.enabled) return;
     const ctx = this.initCtx();
     if (!ctx) return;
@@ -44,6 +47,10 @@ class ArcadeAudioEngine {
         break;
       case "specialist":
         baseFreq = 340;
+        waveType = "triangle";
+        break;
+      case "sentinel":
+        baseFreq = 230;
         waveType = "triangle";
         break;
       case "traveler":
@@ -89,6 +96,16 @@ class ArcadeAudioEngine {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
+    if (this.activeSpeechResolver) {
+      const resolve = this.activeSpeechResolver;
+      this.activeSpeechResolver = null;
+      resolve();
+    }
+  }
+
+  // Skip current spoken line immediately
+  skipSpeech() {
+    this.stopSpeech();
   }
 
   // Play base64-encoded audio returned by Google Gemini (Supports WAV, PCM, or MP3)
@@ -187,12 +204,15 @@ class ArcadeAudioEngine {
       const done = () => {
         if (!resolved) {
           resolved = true;
+          this.activeSpeechResolver = null;
           if (this.currentSource === source) {
             this.currentSource = null;
           }
           resolve();
         }
       };
+
+      this.activeSpeechResolver = done;
 
       const durationMs = (audioBuffer.duration / (this.playbackRate || 1)) * 1000;
       const timeoutId = setTimeout(done, durationMs + 400);
@@ -208,7 +228,7 @@ class ArcadeAudioEngine {
 
   // Fallback to browser speech synthesis if model audio is unavailable
   speakFallback(
-    speaker: "traveler" | "claude" | "gemini" | "specialist",
+    speaker: ArcadeSpeaker,
     text: string
   ): Promise<void> {
     if (typeof window === "undefined" || !window.speechSynthesis) {
@@ -217,7 +237,24 @@ class ArcadeAudioEngine {
 
     this.stopSpeech();
 
+    // Ensure speech synthesis is not stuck in paused state in Chromium/WebKit
+    try {
+      window.speechSynthesis.resume();
+    } catch {
+      // ignore
+    }
+
     return new Promise((resolve) => {
+      let resolved = false;
+      const done = () => {
+        if (!resolved) {
+          resolved = true;
+          this.activeSpeechResolver = null;
+          resolve();
+        }
+      };
+      this.activeSpeechResolver = done;
+
       const utterance = new SpeechSynthesisUtterance(text);
 
       switch (speaker) {
@@ -232,6 +269,10 @@ class ArcadeAudioEngine {
         case "specialist":
           utterance.pitch = 0.92;
           utterance.rate = 1.02;
+          break;
+        case "sentinel":
+          utterance.pitch = 0.75;
+          utterance.rate = 0.95;
           break;
         case "traveler":
         default:
@@ -256,21 +297,25 @@ class ArcadeAudioEngine {
         }
       }
 
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
+      utterance.onend = done;
+      utterance.onerror = done;
 
-      window.speechSynthesis.speak(utterance);
+      try {
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        done();
+      }
     });
   }
 
   // Play a full turn of character audio: Plays real Gemini audio if returned, or fallback
   async playNegotiationTurn(turn: {
-    speaker: "traveler" | "claude" | "gemini" | "specialist";
+    speaker: ArcadeSpeaker;
     text: string;
     audioBase64?: string;
     audioMimeType?: string;
   }): Promise<void> {
-    if (!this.enabled || !this.voiceEnabled) {
+    if (!this.voiceEnabled) {
       return new Promise((resolve) => setTimeout(resolve, Math.min(turn.text.length * 35, 2200)));
     }
 
@@ -549,6 +594,48 @@ class ArcadeAudioEngine {
 
     osc.start(now);
     osc.stop(now + 0.05);
+  }
+
+  // Rejection sound effect / warning buzzer on rubric failure
+  playReject() {
+    if (!this.enabled) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc1.type = "sawtooth";
+    osc2.type = "square";
+
+    osc1.frequency.setValueAtTime(180, now);
+    osc1.frequency.exponentialRampToValueAtTime(75, now + 0.35);
+
+    osc2.frequency.setValueAtTime(185, now);
+    osc2.frequency.exponentialRampToValueAtTime(80, now + 0.35);
+
+    gain.gain.setValueAtTime(0.13, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 0.38);
+    osc2.stop(now + 0.38);
+  }
+
+  // Escrow refund sound effect (gentle double coin chime)
+  playRefund() {
+    if (!this.enabled) return;
+    this.playCoin();
+    setTimeout(() => {
+      this.playCoin();
+    }, 120);
   }
 }
 
