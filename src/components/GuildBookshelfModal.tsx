@@ -69,91 +69,94 @@ export function GuildBookshelfModal({ onClose }: GuildBookshelfModalProps) {
           </button>
         </div>
 
-        {/* Library Split Layout: Book Spine Selector + Open Reading Pane */}
-        <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 16, marginTop: 16, minHeight: 280 }}>
-          {/* Bookshelf Spines List */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, borderRight: "2px solid var(--border-inner)", paddingRight: 14 }}>
-            <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--accent-gold)", letterSpacing: 0.5, textTransform: "uppercase" }}>
-              ARCHIVED TOMES
-            </span>
+        {/* Scrollable Body */}
+        <div className="rpg-dialog-body">
+          {/* Library Split Layout: Book Spine Selector + Open Reading Pane */}
+          <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 16, minHeight: 280 }}>
+            {/* Bookshelf Spines List */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, borderRight: "2px solid var(--border-inner)", paddingRight: 14 }}>
+              <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--accent-gold)", letterSpacing: 0.5, textTransform: "uppercase" }}>
+                ARCHIVED TOMES
+              </span>
 
-            {TOMES.map((tome) => {
-              const isSelected = tome.id === selectedTome.id;
-              return (
-                <button
-                  key={tome.id}
-                  onClick={() => setSelectedTome(tome)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 10px",
-                    background: isSelected ? "var(--bg-surface-elevated)" : "var(--bg-surface)",
-                    border: "2px solid var(--border-outer)",
-                    boxShadow: isSelected ? "inset 0 0 0 1px var(--accent-gold)" : "inset 0 0 0 1px var(--border-inner)",
-                    borderRadius: "var(--radius-xs)",
-                    textAlign: "left",
-                    cursor: "pointer",
-                    transition: "all 0.1s ease",
-                  }}
-                >
-                  <div style={{ width: 4, height: 24, borderRadius: 2, background: tome.color, flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block" }}>
-                      {tome.volume}
-                    </span>
-                    <b style={{ fontSize: 11, color: isSelected ? "var(--accent-gold)" : "var(--text-main)", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {tome.title}
-                    </b>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Open Tome Reading Page */}
-          <div
-            style={{
-              background: "var(--bg-input)",
-              border: "2px solid var(--border-outer)",
-              borderRadius: "var(--radius-xs)",
-              padding: 18,
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-              boxShadow: "inset 0 0 0 1px var(--border-inner), inset 0 2px 10px rgba(0,0,0,0.5)",
-            }}
-          >
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-inner)", paddingBottom: 10, marginBottom: 12 }}>
-                <div>
-                  <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--accent-gold)" }}>
-                    {selectedTome.volume} · {selectedTome.author}
-                  </span>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-main)", marginTop: 2 }}>
-                    {selectedTome.title}
-                  </h3>
-                </div>
-              </div>
-
-              <p style={{ fontSize: 13, color: "var(--text-main)", lineHeight: 1.65, margin: 0 }}>
-                {selectedTome.content}
-              </p>
+              {TOMES.map((tome) => {
+                const isSelected = tome.id === selectedTome.id;
+                return (
+                  <button
+                    key={tome.id}
+                    onClick={() => setSelectedTome(tome)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 10px",
+                      background: isSelected ? "var(--bg-surface-elevated)" : "var(--bg-surface)",
+                      border: "2px solid var(--border-outer)",
+                      boxShadow: isSelected ? "inset 0 0 0 1px var(--accent-gold)" : "inset 0 0 0 1px var(--border-inner)",
+                      borderRadius: "var(--radius-xs)",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      transition: "all 0.1s ease",
+                    }}
+                  >
+                    <div style={{ width: 4, height: 24, borderRadius: 2, background: tome.color, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block" }}>
+                        {tome.volume}
+                      </span>
+                      <b style={{ fontSize: 11, color: isSelected ? "var(--accent-gold)" : "var(--text-main)", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {tome.title}
+                      </b>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
-            <div style={{ borderTop: "1px solid var(--border-inner)", paddingTop: 10, marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
-                Source: BountyMesh Protocol Architecture
-              </span>
-              <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--accent-green-bright)" }}>
-                Workflow Guide
-              </span>
+            {/* Open Tome Reading Page */}
+            <div
+              style={{
+                background: "var(--bg-input)",
+                border: "2px solid var(--border-outer)",
+                borderRadius: "var(--radius-xs)",
+                padding: 18,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                boxShadow: "inset 0 0 0 1px var(--border-inner), inset 0 2px 10px rgba(0,0,0,0.5)",
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-inner)", paddingBottom: 10, marginBottom: 12 }}>
+                  <div>
+                    <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--accent-gold)" }}>
+                      {selectedTome.volume} · {selectedTome.author}
+                    </span>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-main)", marginTop: 2 }}>
+                      {selectedTome.title}
+                    </h3>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: 13, color: "var(--text-main)", lineHeight: 1.65, margin: 0 }}>
+                  {selectedTome.content}
+                </p>
+              </div>
+
+              <div style={{ borderTop: "1px solid var(--border-inner)", paddingTop: 10, marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+                  Source: BountyMesh Protocol Architecture
+                </span>
+                <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--accent-green-bright)" }}>
+                  Workflow Guide
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Bottom Actions */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: 10, borderTop: "2px solid var(--border-inner)", flexShrink: 0 }}>
           <button onClick={onClose} className="arcade-btn-primary">
             Close Library
           </button>

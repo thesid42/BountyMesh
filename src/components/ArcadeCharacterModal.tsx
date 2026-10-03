@@ -48,65 +48,68 @@ export function ArcadeCharacterModal({
           </button>
         </div>
 
-        {/* RPG Stat Grid */}
-        <div className="rpg-stats-grid">
-          <div className="rpg-stat-box">
-            <span className="rpg-stat-label">Role</span>
-            <b className="rpg-stat-val" style={{ color: role === "orchestrator" ? "var(--accent-purple)" : "var(--accent-blue)" }}>
-              {roleDisplay}
-            </b>
-          </div>
+        {/* Scrollable Body */}
+        <div className="rpg-dialog-body">
+          {/* RPG Stat Grid */}
+          <div className="rpg-stats-grid">
+            <div className="rpg-stat-box">
+              <span className="rpg-stat-label">Role</span>
+              <b className="rpg-stat-val" style={{ color: role === "orchestrator" ? "var(--accent-purple)" : "var(--accent-blue)" }}>
+                {roleDisplay}
+              </b>
+            </div>
 
-          <div className="rpg-stat-box">
-            <span className="rpg-stat-label">Vault Balance</span>
-            <b className="rpg-stat-val" style={{ color: "var(--accent-gold)" }}>
-              {gold === undefined ? "—" : `$${(gold / 100).toFixed(2)}`}
-            </b>
-          </div>
+            <div className="rpg-stat-box">
+              <span className="rpg-stat-label">Vault Balance</span>
+              <b className="rpg-stat-val" style={{ color: "var(--accent-gold)" }}>
+                {gold === undefined ? "—" : `$${(gold / 100).toFixed(2)}`}
+              </b>
+            </div>
 
-          <div className="rpg-stat-box">
-            <span className="rpg-stat-label">Tasks Delivered</span>
-            <b className="rpg-stat-val" style={{ color: "var(--accent-green-bright)" }}>
-              {agent ? agent.tasksCompleted : "—"}
-            </b>
-          </div>
+            <div className="rpg-stat-box">
+              <span className="rpg-stat-label">Tasks Delivered</span>
+              <b className="rpg-stat-val" style={{ color: "var(--accent-green-bright)" }}>
+                {agent ? agent.tasksCompleted : "—"}
+              </b>
+            </div>
 
-          <div className="rpg-stat-box" style={{ gridColumn: "span 3" }}>
-            <span className="rpg-stat-label">Capability Index</span>
-            <b className="rpg-stat-val" style={{ color: "var(--accent-blue)", fontSize: 13, marginTop: 2 }}>
-              {agent ? "Automatic skill matching" : "No worker account"}
-            </b>
-          </div>
-        </div>
-
-        {/* Specialties */}
-        {skills.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <span className="rpg-section-title">Specialties</span>
-            <div className="rpg-skills-wrap">
-              {skills.map((skill, idx) => (
-                <span key={idx} className="rpg-skill-chip">
-                  {skill}
-                </span>
-              ))}
+            <div className="rpg-stat-box" style={{ gridColumn: "span 3" }}>
+              <span className="rpg-stat-label">Capability Index</span>
+              <b className="rpg-stat-val" style={{ color: "var(--accent-blue)", fontSize: 13, marginTop: 2 }}>
+                {agent ? "Automatic skill matching" : "No worker account"}
+              </b>
             </div>
           </div>
-        )}
 
-        {/* Agent Dossier */}
-        <div style={{ marginTop: 16 }}>
-          <span className="rpg-section-title">Agent Dossier</span>
-          <p className="rpg-lore-text">
-            {!agent
-              ? "This character decorates the guild scene. It has no connected worker account, task history, or payment balance."
-              : role === "orchestrator"
-                ? "Plans focused tasks and reviews delivered research and chart specifications before payment settlement. Workers are selected automatically by skill fit."
-                : `Registered specialist using ${model} to produce text research artifacts and visualization specifications. The server selects workers automatically by skill fit.`}
-          </p>
+          {/* Specialties */}
+          {skills.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <span className="rpg-section-title">Specialties</span>
+              <div className="rpg-skills-wrap">
+                {skills.map((skill, idx) => (
+                  <span key={idx} className="rpg-skill-chip">
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Agent Dossier */}
+          <div style={{ marginTop: 16 }}>
+            <span className="rpg-section-title">Agent Dossier</span>
+            <p className="rpg-lore-text">
+              {!agent
+                ? "This character decorates the guild scene. It has no connected worker account, task history, or payment balance."
+                : role === "orchestrator"
+                  ? "Plans focused tasks and reviews delivered research and chart specifications before payment settlement. Workers are selected automatically by skill fit."
+                  : `Registered specialist using ${model} to produce text research artifacts and visualization specifications. The server selects workers automatically by skill fit.`}
+            </p>
+          </div>
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 24 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 10, borderTop: "2px solid var(--border-inner)", flexShrink: 0 }}>
           <button onClick={onClose} className="arcade-btn-pill">
             Close
           </button>

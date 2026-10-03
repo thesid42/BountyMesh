@@ -36,74 +36,77 @@ export function GuildNoticeBoardModal({
           </button>
         </div>
 
-        {/* Board Description */}
-        <p className="rpg-lore-text" style={{ margin: "14px 0 10px" }}>
-          The wooden board is covered with pinned parchment sheets. Travelers post requirements with gold in escrow, while specialist agents claim and deliver verified artifacts.
-        </p>
+        {/* Scrollable Body */}
+        <div className="rpg-dialog-body">
+          {/* Board Description */}
+          <p className="rpg-lore-text" style={{ margin: "0 0 12px" }}>
+            The wooden board is covered with pinned parchment sheets. Travelers post requirements with gold in escrow, while specialist agents claim and deliver verified artifacts.
+          </p>
 
-        {/* Pinned Parchment Quest Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 12, maxHeight: 340, overflowY: "auto", padding: "4px 2px" }}>
-          {bounties.length > 0 ? (
-            bounties.map((b) => (
-              <div
-                key={b.id}
-                style={{
-                  background: "var(--bg-surface)",
-                  border: "2px solid var(--border-outer)",
-                  boxShadow: "inset 0 0 0 1px var(--border-inner), 0 3px 0 var(--border-outer)",
-                  borderRadius: "var(--radius-xs)",
-                  padding: 14,
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  gap: 10,
-                }}
-              >
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
-                      #{b.id.slice(0, 8)}
-                    </span>
-                    <span className={`status-pill status-${b.status}`}>
-                      {b.status === "paid" ? "CLEARED" : b.status.toUpperCase()}
-                    </span>
+          {/* Pinned Parchment Quest Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 12, padding: "4px 2px" }}>
+            {bounties.length > 0 ? (
+              bounties.map((b) => (
+                <div
+                  key={b.id}
+                  style={{
+                    background: "var(--bg-surface)",
+                    border: "2px solid var(--border-outer)",
+                    boxShadow: "inset 0 0 0 1px var(--border-inner), 0 3px 0 var(--border-outer)",
+                    borderRadius: "var(--radius-xs)",
+                    padding: 14,
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    gap: 10,
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
+                        #{b.id.slice(0, 8)}
+                      </span>
+                      <span className={`status-pill status-${b.status}`}>
+                        {b.status === "paid" ? "CLEARED" : b.status.toUpperCase()}
+                      </span>
+                    </div>
+
+                    <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text-main)", marginBottom: 4, lineHeight: 1.3 }}>
+                      {b.title}
+                    </h3>
+                    <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.45, maxHeight: 48, overflow: "hidden" }}>
+                      {b.description}
+                    </p>
                   </div>
 
-                  <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text-main)", marginBottom: 4, lineHeight: 1.3 }}>
-                    {b.title}
-                  </h3>
-                  <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.45, maxHeight: 48, overflow: "hidden" }}>
-                    {b.description}
-                  </p>
-                </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 8, borderTop: "1px solid var(--border-inner)" }}>
+                    <span className="mono-amount emerald" style={{ fontSize: 15 }}>
+                      ${(b.rewardCents / 100).toFixed(2)}
+                    </span>
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 8, borderTop: "1px solid var(--border-inner)" }}>
-                  <span className="mono-amount emerald" style={{ fontSize: 15 }}>
-                    ${(b.rewardCents / 100).toFixed(2)}
-                  </span>
-
-                  <button
-                    onClick={() => {
-                      onClose();
-                      onSelectBounty(b);
-                    }}
-                    className="arcade-btn-pill"
-                    style={{ fontSize: 10, padding: "5px 10px" }}
-                  >
-                    {b.deliverable ? "View Deliverable →" : "Inspect Task →"}
-                  </button>
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onSelectBounty(b);
+                      }}
+                      className="arcade-btn-pill"
+                      style={{ fontSize: 10, padding: "5px 10px" }}
+                    >
+                      {b.deliverable ? "View Deliverable →" : "Inspect Task →"}
+                    </button>
+                  </div>
                 </div>
+              ))
+            ) : (
+              <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "30px 10px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                No quests currently pinned on the board. Create one below to deploy specialist agents!
               </div>
-            ))
-          ) : (
-            <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "30px 10px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-              No quests currently pinned on the board. Create one below to deploy specialist agents!
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Bottom Actions */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20, paddingTop: 14, borderTop: "2px solid var(--border-inner)", flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "2px solid var(--border-inner)", flexWrap: "wrap", gap: 10, flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
               {bounties.length} quests in ledger
