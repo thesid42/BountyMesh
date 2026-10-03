@@ -63,6 +63,7 @@ export default function Home() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [actionSuccess, setActionSuccess] = useState(false);
+  const [taskSequenceTrigger, setTaskSequenceTrigger] = useState(0);
 
   // Modals state
   const [inspectedAgent, setInspectedAgent] = useState<{ agent: Agent | null; char?: ArcadeCharacter } | null>(null);
@@ -119,6 +120,7 @@ export default function Home() {
     setSubmitting(true);
     setActionSuccess(false);
     setError("");
+    setTaskSequenceTrigger((prev) => prev + 1);
 
     try {
       const response = await fetch("/api/runs", {
@@ -259,6 +261,7 @@ export default function Home() {
               activeGoal={goal}
               rewardCents={rewardCents}
               isExecuting={submitting}
+              triggerSequenceKey={taskSequenceTrigger}
               onSelectCharacter={(agent, customChar) => setInspectedAgent({ agent, char: customChar })}
               onSelectBounty={(bounty) => setInspectedBounty(bounty)}
               onFillGoal={(text) => setGoal(text)}

@@ -1,14 +1,19 @@
-// Pure Web Audio API Chiptune & RPG Sound Synthesizer
-// Zero external assets required, 100% reliable, zero latency, zero emojis
+// Pure Web Audio API Sound Synthesizer, Live Model Voice Player & Audio Engine
+// Supports Google Gemini 24kHz Audio & WAV Streams, 100% reliable, zero emojis
 
 class ArcadeAudioEngine {
   private ctx: AudioContext | null = null;
   public enabled: boolean = true;
+  public voiceEnabled: boolean = true;
+  public playbackRate: number = 1.0;
+  private currentSource: AudioBufferSourceNode | null = null;
 
-  private initCtx() {
-    if (typeof window === "undefined") return;
+  public initCtx(): AudioContext | null {
+    if (typeof window === "undefined") return null;
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
       }
@@ -16,27 +21,292 @@ class ArcadeAudioEngine {
     if (this.ctx && this.ctx.state === "suspended") {
       void this.ctx.resume();
     }
+    return this.ctx;
+  }
+
+  // Soft retro character voice chatter (Zelda / Undertale / RPG style)
+  playTalkChirp(speaker: "traveler" | "claude" | "gemini" | "specialist") {
+    if (!this.enabled) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
+
+    let baseFreq = 300;
+    let waveType: OscillatorType = "sine";
+
+    switch (speaker) {
+      case "claude":
+        baseFreq = 210;
+        waveType = "sine";
+        break;
+      case "gemini":
+        baseFreq = 480;
+        waveType = "triangle";
+        break;
+      case "specialist":
+        baseFreq = 340;
+        waveType = "triangle";
+        break;
+      case "traveler":
+      default:
+        baseFreq = 270;
+        waveType = "sine";
+        break;
+    }
+
+    const now = ctx.currentTime;
+    for (let i = 0; i < 2; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const t = now + i * 0.05;
+      const jitter = (Math.random() - 0.5) * 16;
+
+      osc.type = waveType;
+      osc.frequency.setValueAtTime(baseFreq + jitter, t);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.9, t + 0.035);
+
+      gain.gain.setValueAtTime(0.04, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(t);
+      osc.stop(t + 0.04);
+    }
+  }
+
+  // Stop any active spoken audio immediately
+  stopSpeech() {
+    if (this.currentSource) {
+      try {
+        this.currentSource.stop();
+        this.currentSource.disconnect();
+      } catch {
+        // Already stopped
+      }
+      this.currentSource = null;
+    }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  // Play base64-encoded audio returned by Google Gemini (Supports WAV, PCM, or MP3)
+  async playBase64Audio(base64: string, mimeType = "audio/wav"): Promise<void> {
+    const ctx = this.initCtx();
+    if (!ctx) return;
+
+    this.stopSpeech();
+
+    // Ensure AudioContext is active
+    if (ctx.state === "suspended") {
+      await ctx.resume();
+    }
+
+    // Decode base64 to binary buffer
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    let audioBuffer: AudioBuffer | null = null;
+
+    // 1. First attempt: Standard browser decodeAudioData with universal Promise + Callback wrapper
+    try {
+      audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+        let settled = false;
+        try {
+          const promise = ctx.decodeAudioData(
+            bytes.buffer.slice(0),
+            (buf) => {
+              if (!settled) {
+                settled = true;
+                resolve(buf);
+              }
+            },
+            (err) => {
+              if (!settled) {
+                settled = true;
+                reject(err);
+              }
+            }
+          );
+          if (promise && typeof (promise as unknown as Promise<AudioBuffer>).then === "function") {
+            (promise as unknown as Promise<AudioBuffer>)
+              .then((buf) => {
+                if (!settled) {
+                  settled = true;
+                  resolve(buf);
+                }
+              })
+              .catch((err) => {
+                if (!settled) {
+                  settled = true;
+                  reject(err);
+                }
+              });
+          }
+        } catch (e) {
+          reject(e);
+        }
+      });
+    } catch {
+      // 2. Second attempt: Raw 24kHz 16-bit linear PCM from Gemini
+      try {
+        const sampleRate = mimeType.includes("24000") ? 24000 : 24000;
+        const int16Array = new Int16Array(bytes.buffer);
+        audioBuffer = ctx.createBuffer(1, int16Array.length, sampleRate);
+        const channel = audioBuffer.getChannelData(0);
+        for (let i = 0; i < int16Array.length; i++) {
+          channel[i] = int16Array[i] / 32768;
+        }
+      } catch {
+        audioBuffer = null;
+      }
+    }
+
+    if (!audioBuffer) return;
+
+    return new Promise((resolve) => {
+      if (!ctx || !audioBuffer) {
+        resolve();
+        return;
+      }
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      if (this.playbackRate && this.playbackRate !== 1) {
+        source.playbackRate.value = this.playbackRate;
+      }
+      source.connect(ctx.destination);
+      this.currentSource = source;
+
+      let resolved = false;
+      const done = () => {
+        if (!resolved) {
+          resolved = true;
+          if (this.currentSource === source) {
+            this.currentSource = null;
+          }
+          resolve();
+        }
+      };
+
+      const durationMs = (audioBuffer.duration / (this.playbackRate || 1)) * 1000;
+      const timeoutId = setTimeout(done, durationMs + 400);
+
+      source.onended = () => {
+        clearTimeout(timeoutId);
+        done();
+      };
+
+      source.start(0);
+    });
+  }
+
+  // Fallback to browser speech synthesis if model audio is unavailable
+  speakFallback(
+    speaker: "traveler" | "claude" | "gemini" | "specialist",
+    text: string
+  ): Promise<void> {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      return new Promise((resolve) => setTimeout(resolve, Math.min(text.length * 50, 3000)));
+    }
+
+    this.stopSpeech();
+
+    return new Promise((resolve) => {
+      const utterance = new SpeechSynthesisUtterance(text);
+
+      switch (speaker) {
+        case "claude":
+          utterance.pitch = 0.8;
+          utterance.rate = 0.95;
+          break;
+        case "gemini":
+          utterance.pitch = 1.15;
+          utterance.rate = 1.05;
+          break;
+        case "specialist":
+          utterance.pitch = 0.92;
+          utterance.rate = 1.02;
+          break;
+        case "traveler":
+        default:
+          utterance.pitch = 1.0;
+          utterance.rate = 1.0;
+          break;
+      }
+
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        const english = voices.filter((v) => v.lang.startsWith("en"));
+        if (english.length > 0) {
+          if (speaker === "claude") {
+            utterance.voice =
+              english.find((v) => v.name.toLowerCase().includes("male") || v.name.includes("David")) ||
+              english[0];
+          } else if (speaker === "gemini") {
+            utterance.voice =
+              english.find((v) => v.name.toLowerCase().includes("natural") || v.name.includes("Alex")) ||
+              english[0];
+          }
+        }
+      }
+
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
+
+      window.speechSynthesis.speak(utterance);
+    });
+  }
+
+  // Play a full turn of character audio: Plays real Gemini audio if returned, or fallback
+  async playNegotiationTurn(turn: {
+    speaker: "traveler" | "claude" | "gemini" | "specialist";
+    text: string;
+    audioBase64?: string;
+    audioMimeType?: string;
+  }): Promise<void> {
+    if (!this.enabled || !this.voiceEnabled) {
+      return new Promise((resolve) => setTimeout(resolve, Math.min(turn.text.length * 35, 2200)));
+    }
+
+    // If Gemini provided actual voice audio, play the live model speech!
+    if (turn.audioBase64) {
+      try {
+        await this.playBase64Audio(turn.audioBase64, turn.audioMimeType);
+        return;
+      } catch {
+        // Fall back if decode fails
+      }
+    }
+
+    // Fallback to speech synthesis
+    await this.speakFallback(turn.speaker, turn.text);
   }
 
   // 8-bit coin pickup arpeggio (B5 -> E6)
   playCoin() {
     if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
 
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
     osc.type = "square";
-    osc.frequency.setValueAtTime(987.77, now); // B5
-    osc.frequency.setValueAtTime(1318.51, now + 0.08); // E6
+    osc.frequency.setValueAtTime(987.77, now);
+    osc.frequency.setValueAtTime(1318.51, now + 0.08);
 
-    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.setValueAtTime(0.1, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(ctx.destination);
 
     osc.start(now);
     osc.stop(now + 0.35);
@@ -45,22 +315,22 @@ class ArcadeAudioEngine {
   // Warp in / character enters room
   playWarp() {
     if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
 
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
     osc.type = "sine";
     osc.frequency.setValueAtTime(220, now);
     osc.frequency.exponentialRampToValueAtTime(880, now + 0.2);
 
-    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.setValueAtTime(0.12, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(ctx.destination);
 
     osc.start(now);
     osc.stop(now + 0.25);
@@ -69,22 +339,22 @@ class ArcadeAudioEngine {
   // Bidding alert ding / blip
   playBid() {
     if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
 
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
     osc.type = "triangle";
-    osc.frequency.setValueAtTime(587.33, now); // D5
-    osc.frequency.setValueAtTime(880, now + 0.06); // A5
+    osc.frequency.setValueAtTime(587.33, now);
+    osc.frequency.setValueAtTime(880, now + 0.06);
 
-    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.setValueAtTime(0.12, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(ctx.destination);
 
     osc.start(now);
     osc.stop(now + 0.2);
@@ -93,26 +363,26 @@ class ArcadeAudioEngine {
   // Fanfare on quest award
   playFanfare() {
     if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
 
-    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
-    const now = this.ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    const now = ctx.currentTime;
 
     notes.forEach((freq, idx) => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
+      if (!ctx) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
       const startTime = now + idx * 0.08;
 
       osc.type = "square";
       osc.frequency.setValueAtTime(freq, startTime);
 
-      gain.gain.setValueAtTime(0.12, startTime);
+      gain.gain.setValueAtTime(0.1, startTime);
       gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.18);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(ctx.destination);
 
       osc.start(startTime);
       osc.stop(startTime + 0.18);
@@ -122,8 +392,8 @@ class ArcadeAudioEngine {
   // Rapid gold payout shower
   playPayout() {
     if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
 
     for (let i = 0; i < 5; i++) {
       setTimeout(() => {
@@ -135,22 +405,22 @@ class ArcadeAudioEngine {
   // Parchment / Quest Notice Board rustle sound
   playPaper() {
     if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
 
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
     osc.type = "triangle";
     osc.frequency.setValueAtTime(650, now);
     osc.frequency.exponentialRampToValueAtTime(320, now + 0.1);
 
-    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.setValueAtTime(0.08, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(ctx.destination);
 
     osc.start(now);
     osc.stop(now + 0.12);
@@ -159,22 +429,22 @@ class ArcadeAudioEngine {
   // Heavy Gold Chest / Vault opening chime
   playChest() {
     if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
 
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
     osc.type = "sine";
     osc.frequency.setValueAtTime(330, now);
     osc.frequency.exponentialRampToValueAtTime(660, now + 0.15);
 
-    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.setValueAtTime(0.12, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(ctx.destination);
 
     osc.start(now);
     osc.stop(now + 0.28);
@@ -183,23 +453,23 @@ class ArcadeAudioEngine {
   // Warm hearth fire stoke whoosh
   playHearth() {
     if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
 
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
     osc.type = "sine";
     osc.frequency.setValueAtTime(140, now);
     osc.frequency.exponentialRampToValueAtTime(220, now + 0.18);
     osc.frequency.exponentialRampToValueAtTime(90, now + 0.35);
 
-    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.setValueAtTime(0.1, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(ctx.destination);
 
     osc.start(now);
     osc.stop(now + 0.38);
@@ -208,25 +478,25 @@ class ArcadeAudioEngine {
   // Alchemical potion vial bubbling / clink
   playPotion() {
     if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
 
-    const now = this.ctx.currentTime;
+    const now = ctx.currentTime;
     const notes = [784, 987, 1174];
     notes.forEach((freq, i) => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
+      if (!ctx) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
       const t = now + i * 0.05;
 
       osc.type = "sine";
       osc.frequency.setValueAtTime(freq, t);
 
-      gain.gain.setValueAtTime(0.09, t);
+      gain.gain.setValueAtTime(0.08, t);
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(ctx.destination);
 
       osc.start(t);
       osc.stop(t + 0.12);
@@ -236,22 +506,22 @@ class ArcadeAudioEngine {
   // Ancient library spellbook flutter
   playBook() {
     if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
 
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
     osc.type = "triangle";
     osc.frequency.setValueAtTime(480, now);
     osc.frequency.exponentialRampToValueAtTime(720, now + 0.08);
 
-    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.setValueAtTime(0.08, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(ctx.destination);
 
     osc.start(now);
     osc.stop(now + 0.16);
@@ -260,22 +530,22 @@ class ArcadeAudioEngine {
   // Standard tactile UI button click
   playClick() {
     if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
 
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
     osc.type = "triangle";
     osc.frequency.setValueAtTime(440, now);
     osc.frequency.exponentialRampToValueAtTime(220, now + 0.05);
 
-    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.setValueAtTime(0.07, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(ctx.destination);
 
     osc.start(now);
     osc.stop(now + 0.05);
@@ -283,3 +553,17 @@ class ArcadeAudioEngine {
 }
 
 export const arcadeAudio = new ArcadeAudioEngine();
+
+// Auto-unlock AudioContext on first user interaction to satisfy browser autoplay policies
+if (typeof window !== "undefined") {
+  const unlockAudio = () => {
+    arcadeAudio.initCtx();
+    window.removeEventListener("pointerdown", unlockAudio);
+    window.removeEventListener("keydown", unlockAudio);
+    window.removeEventListener("click", unlockAudio);
+  };
+  window.addEventListener("pointerdown", unlockAudio, { passive: true });
+  window.addEventListener("keydown", unlockAudio, { passive: true });
+  window.addEventListener("click", unlockAudio, { passive: true });
+}
+
