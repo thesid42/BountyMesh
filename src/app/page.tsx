@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   ShieldAlert,
@@ -27,7 +27,7 @@ const EMPTY: Snapshot = {
   activity: [],
   ledger: [],
   runs: [],
-  config: { mode: "demo", storage: "local", payments: "demo", ready: false, missing: [], orchestratorModel: "", workerModel: "" },
+  config: { mode: "live", storage: "supabase", payments: "stripe", ready: false, missing: [], orchestratorModel: "", workerModel: "" },
 };
 
 function isSnapshot(value: unknown): value is Snapshot {
@@ -35,11 +35,13 @@ function isSnapshot(value: unknown): value is Snapshot {
   const data = value as Partial<Snapshot>;
   return Array.isArray(data.agents) && Array.isArray(data.bounties) && Array.isArray(data.activity)
     && Array.isArray(data.ledger) && Array.isArray(data.runs) && !!data.config
-    && (data.config.mode === "demo" || data.config.mode === "live");
+    && data.config.mode === "live";
 }
 
+const LIVE_DEMO_GOAL = "Create a clearly hypothetical analysis comparing three fictional AI agent marketplace fee models. Include an illustrative comparison table and a simple chart specification, label every assumption as fictional, and do not claim external research or live market data.";
+
 const EXAMPLE_TASKS = [
-  { label: "Market Opportunity Brief", text: DEFAULT_GOAL, shouldFail: false },
+  { label: "Live Market Brief", text: LIVE_DEMO_GOAL, shouldFail: false },
   { label: "Competitive Pricing Matrix", text: "Analyze competitive pricing, fee structures, and escrow hold mechanics across autonomous agent marketplaces.", shouldFail: false },
   { label: "Vector Routing Benchmark", text: "Benchmark semantic similarity thresholds and latency for pgvector matching in agent subcontracting pipelines.", shouldFail: false },
   { label: "Code Quality Rubric", text: "Draft an automated verification checklist and rubric for code artifacts delivered by autonomous specialist agents.", shouldFail: false },
@@ -55,17 +57,27 @@ const BUDGET_PRESETS = [
 
 export default function Home() {
   const [snapshot, setSnapshot] = useState<Snapshot>(EMPTY);
+  const [hasLoadedSnapshot, setHasLoadedSnapshot] = useState(false);
   const [activeTab, setActiveTab] = useState<"arcade" | "bounties" | "agents" | "ledger">("arcade");
   const [goal, setGoal] = useState("");
   const [rewardCents, setRewardCents] = useState(50);
   const [token, setToken] = useState("");
-  const [, setNeedsToken] = useState(false);
+  const [tokenInput, setTokenInput] = useState("");
+  const [needsToken, setNeedsToken] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [sessionCookieAuth, setSessionCookieAuth] = useState(false);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [connectionError, setConnectionError] = useState("");
   const [actionSuccess, setActionSuccess] = useState(false);
-  const [taskSequenceTrigger, setTaskSequenceTrigger] = useState(0);
   const [isFailureScenario, setIsFailureScenario] = useState(false);
+  const [pendingRun, setPendingRun] = useState<{ goal: string; rewardCents: number; idempotencyKey: string; shouldFail?: boolean } | null>(null);
+  const [terminalRunFailure, setTerminalRunFailure] = useState(false);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const sessionRecoveryAttempted = useRef(false);
+  const requestInFlight = useRef(false);
 
   // Modals state
   const [inspectedAgent, setInspectedAgent] = useState<{ agent: Agent | null; char?: ArcadeCharacter } | null>(null);
@@ -73,72 +85,245 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const headers = useCallback((): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+  const bootstrapSession = useCallback(async (): Promise<boolean> => {
+    try {
+      const response = await fetch("/api/session", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (!response.ok) return false;
+      const result: unknown = await response.json();
+      return !!result && typeof result === "object" && (result as { authenticated?: unknown }).authenticated === true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   const refresh = useCallback(
     async (quiet = false) => {
       if (!quiet) setLoading(true);
       try {
-        const response = await fetch("/api/state", { headers: headers(), cache: "no-store" });
+        let response = await fetch("/api/state", { headers: headers(), credentials: "same-origin", cache: "no-store" });
+        if (response.status === 401 && sessionCookieAuth && !sessionRecoveryAttempted.current) {
+          sessionRecoveryAttempted.current = true;
+          if (await bootstrapSession()) {
+            response = await fetch("/api/state", { headers: headers(), credentials: "same-origin", cache: "no-store" });
+          }
+        }
         if (response.status === 401) {
+          setSessionCookieAuth(false);
           setNeedsToken(true);
+          setConnectionError("");
           return;
         }
         if (!response.ok) throw new Error(`Could not load network state (${response.status})`);
         const data: unknown = await response.json();
         if (!isSnapshot(data)) throw new Error("Invalid snapshot returned.");
         setSnapshot(data);
+        setHasLoadedSnapshot(true);
         setNeedsToken(false);
-        setError("");
+        setConnectionError("");
+        setTokenInput("");
+        sessionRecoveryAttempted.current = false;
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Network error");
+        setConnectionError(e instanceof Error ? e.message : "Network error");
       } finally {
         if (!quiet) setLoading(false);
       }
     },
-    [headers]
+    [bootstrapSession, headers, sessionCookieAuth]
   );
 
   useEffect(() => {
-    const saved = sessionStorage.getItem("bountymesh_token");
-    if (saved) setToken(saved);
-    void refresh();
-  }, [refresh]);
+    const savedRun = sessionStorage.getItem("bountymesh_pending_run");
+    if (savedRun) {
+      try {
+        const pending = JSON.parse(savedRun) as { goal: string; rewardCents: number; idempotencyKey: string };
+        if (typeof pending.goal === "string" && pending.goal.length >= 10 && Number.isInteger(pending.rewardCents)
+          && pending.rewardCents >= 50 && pending.rewardCents <= 500 && typeof pending.idempotencyKey === "string" && pending.idempotencyKey) {
+          setPendingRun(pending);
+          setGoal(pending.goal);
+          setRewardCents(pending.rewardCents);
+        }
+      } catch { sessionStorage.removeItem("bountymesh_pending_run"); }
+    }
+    const savedActiveRunId = sessionStorage.getItem("bountymesh_active_run_id");
+    if (savedActiveRunId) setActiveRunId(savedActiveRunId);
 
-  // Polling state refresh
+    let active = true;
+    void (async () => {
+      const established = await bootstrapSession();
+      if (!active) return;
+      if (established) {
+        sessionStorage.removeItem("bountymesh_token");
+        setToken("");
+        setSessionCookieAuth(true);
+        setNeedsToken(false);
+      } else {
+        const savedToken = sessionStorage.getItem("bountymesh_token") || "";
+        setToken(savedToken);
+        setSessionCookieAuth(false);
+        setNeedsToken(!savedToken);
+      }
+      setAuthReady(true);
+    })();
+    return () => { active = false; };
+  }, [bootstrapSession]);
+
+  useEffect(() => { if (authReady) void refresh(); }, [authReady, refresh]);
+
+  // Poll for recovery while the live stream is disconnected.
   useEffect(() => {
-    const interval = setInterval(() => void refresh(true), submitting ? 1200 : 4000);
+    if (!authReady || needsToken) return;
+    const interval = setInterval(() => void refresh(true), submitting ? 1200 : realtimeConnected ? 15000 : 3000);
     return () => clearInterval(interval);
-  }, [refresh, submitting]);
+  }, [authReady, needsToken, refresh, submitting, realtimeConnected]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanGoal = goal.trim();
+  // Authenticated SSE stream; polling remains active as a recovery path.
+  useEffect(() => {
+    if (!authReady || needsToken || snapshot.config.mode !== "live") {
+      setRealtimeConnected(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+    const pause = (ms: number) => new Promise<void>((resolve) => {
+      const timer = window.setTimeout(resolve, ms);
+      controller.signal.addEventListener("abort", () => { window.clearTimeout(timer); resolve(); }, { once: true });
+    });
+
+    async function streamSnapshots() {
+      let retryDelay = 1000;
+      while (!controller.signal.aborted) {
+        try {
+          const response = await fetch("/api/events", {
+            headers: { ...headers(), Accept: "text/event-stream" },
+            credentials: "same-origin",
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          if (response.status === 401 && active) {
+            if (sessionCookieAuth) void refresh(true);
+            else setNeedsToken(true);
+          }
+          if (!response.ok || !response.body) throw new Error(`Realtime stream unavailable (${response.status}).`);
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          if (active) {
+            setRealtimeConnected(true);
+            setNeedsToken(false);
+            setConnectionError("");
+          }
+          retryDelay = 1000;
+
+          while (!controller.signal.aborted) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const messages = buffer.split(/\r?\n\r?\n/);
+            buffer = messages.pop() ?? "";
+            for (const message of messages) {
+              let eventName = "message";
+              const dataLines: string[] = [];
+              for (const line of message.split(/\r?\n/)) {
+                if (line.startsWith("event:")) eventName = line.slice(6).trim();
+                else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+              }
+              if (eventName !== "snapshot" || dataLines.length === 0) continue;
+              try {
+                const next: unknown = JSON.parse(dataLines.join("\n"));
+                if (active && isSnapshot(next)) {
+                  setSnapshot(next);
+                  setHasLoadedSnapshot(true);
+                }
+              } catch { /* Ignore malformed event payloads; the next snapshot can recover. */ }
+            }
+          }
+          if (!controller.signal.aborted) throw new Error("Realtime stream ended.");
+        } catch (e) {
+          if (controller.signal.aborted) break;
+          if (active) {
+            setRealtimeConnected(false);
+            if (e instanceof Error && e.name !== "AbortError") setConnectionError("Realtime disconnected; polling the API while reconnecting.");
+          }
+        }
+        if (!controller.signal.aborted) {
+          await pause(retryDelay);
+          retryDelay = Math.min(retryDelay * 2, 15000);
+        }
+      }
+    }
+
+    void streamSnapshots();
+    return () => {
+      active = false;
+      controller.abort();
+      setRealtimeConnected(false);
+    };
+  }, [authReady, needsToken, snapshot.config.mode, headers, refresh, sessionCookieAuth]);
+
+  const networkReady = authReady && hasLoadedSnapshot && snapshot.config.mode === "live" && snapshot.config.ready && !needsToken;
+  const canStartWork = networkReady && !pendingRun && !submitting;
+  const canRunLiveDemo = canStartWork && snapshot.config.mode === "live";
+
+  const submitRun = async (goalValue: string, rewardValue: number) => {
+    if (requestInFlight.current || submitting) return;
+    if (!networkReady) {
+      setError(needsToken ? "Connect an operator session before submitting work." : "Waiting for a ready network snapshot before starting work.");
+      return;
+    }
+    const cleanGoal = goalValue.trim();
     if (cleanGoal.length < 10) {
       setError("Please describe the task with at least 10 characters.");
       return;
     }
+    if (pendingRun && (cleanGoal !== pendingRun.goal || rewardValue !== pendingRun.rewardCents)) {
+      setError("Retry the pending request unchanged, or start a new request after a confirmed failure.");
+      return;
+    }
 
     const isFail = isFailureScenario || cleanGoal.toLowerCase().includes("cryptographic proof") || cleanGoal.toLowerCase().includes("rubric failure") || cleanGoal.toLowerCase().includes("flawed");
+    const request = pendingRun ?? { goal: cleanGoal, rewardCents: rewardValue, idempotencyKey: crypto.randomUUID(), shouldFail: isFail };
+    if (!pendingRun) {
+      setPendingRun(request);
+      setActiveRunId(null);
+      sessionStorage.removeItem("bountymesh_active_run_id");
+      sessionStorage.setItem("bountymesh_pending_run", JSON.stringify(request));
+    }
+
+    requestInFlight.current = true;
     arcadeAudio.playCoin();
     setSubmitting(true);
     setActionSuccess(false);
     setError("");
-    setTaskSequenceTrigger((prev) => prev + 1);
 
     try {
-      const response = await fetch("/api/runs", {
+      let response = await fetch("/api/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers() },
-        body: JSON.stringify({
-          goal: cleanGoal,
-          rewardCents,
-          idempotencyKey: crypto.randomUUID(),
-          shouldFail: isFail,
-        }),
+        credentials: "same-origin",
+        body: JSON.stringify(request),
       });
 
-      const result = await response.json().catch(() => ({}));
+      let result = await response.json().catch(() => ({}));
+      if (response.status === 401 && sessionCookieAuth && !sessionRecoveryAttempted.current) {
+        sessionRecoveryAttempted.current = true;
+        if (await bootstrapSession()) {
+          response = await fetch("/api/runs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...headers() },
+            credentials: "same-origin",
+            body: JSON.stringify(request),
+          });
+          result = await response.json().catch(() => ({}));
+        }
+      }
       if (response.status === 401) {
+        setSessionCookieAuth(false);
         setNeedsToken(true);
         throw new Error("Operator token required.");
       }
@@ -146,10 +331,31 @@ export default function Home() {
         await refresh(true);
         throw new Error(result.error || `Task failed (${response.status})`);
       }
+      sessionRecoveryAttempted.current = false;
 
-      if (result.snapshot) setSnapshot(result.snapshot as Snapshot);
+      if (typeof result.run?.id === "string") {
+        setActiveRunId(result.run.id);
+        sessionStorage.setItem("bountymesh_active_run_id", result.run.id);
+      }
+
+      const runSnapshot: Snapshot | null = isSnapshot(result.snapshot) ? result.snapshot : null;
+      if (runSnapshot) {
+        setSnapshot(runSnapshot);
+        setHasLoadedSnapshot(true);
+      }
       else await refresh(true);
 
+      if (result.run?.status === "failed") {
+        const safeToStartNewRequest = result.canStartNewRequest === true;
+        setTerminalRunFailure(safeToStartNewRequest);
+        throw new Error(result.run.error || (safeToStartNewRequest
+          ? "This request failed and its escrow is clear. Retry with the same key or start a new request."
+          : "This run may still have escrow pending. Retry with the same request key while it recovers."));
+      }
+
+      setPendingRun(null);
+      sessionStorage.removeItem("bountymesh_pending_run");
+      setTerminalRunFailure(false);
       setActionSuccess(true);
       setGoal("");
       setIsFailureScenario(false);
@@ -158,18 +364,55 @@ export default function Home() {
       await refresh(true);
       setError(err instanceof Error ? err.message : "Failed to subcontract task.");
     } finally {
+      requestInFlight.current = false;
       setSubmitting(false);
     }
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void submitRun(goal, rewardCents);
+  };
+
+  const connectToken = () => {
+    const nextToken = tokenInput.trim();
+    if (!nextToken) return;
+    sessionStorage.setItem("bountymesh_token", nextToken);
+    setToken(nextToken);
+    setSessionCookieAuth(false);
+    sessionRecoveryAttempted.current = false;
+    setNeedsToken(false);
+  };
+
+  const startNewRequest = () => {
+    setPendingRun(null);
+    setTerminalRunFailure(false);
+    sessionStorage.removeItem("bountymesh_pending_run");
+    setError("");
+    setActionSuccess(false);
+  };
+
+  const runLiveDemo = () => {
+    if (!canRunLiveDemo || requestInFlight.current) return;
+    setGoal(LIVE_DEMO_GOAL);
+    setRewardCents(50);
+    void submitRun(LIVE_DEMO_GOAL, 50);
+  };
+
   const orchestrator = snapshot.agents.find((a) => a.role === "orchestrator");
-  const balance = orchestrator ? `$${(orchestrator.balanceCents / 100).toFixed(2)}` : "$10.00";
+  const balance = orchestrator ? `$${(orchestrator.balanceCents / 100).toFixed(2)}` : "—";
+  const totalPaid = snapshot.ledger.filter((e) => e.kind === "payout").reduce((s, e) => s + e.amountCents, 0);
+  const stripeTestPaid = snapshot.ledger.filter((e) => e.kind === "payout" && e.provider === "stripe").reduce((s, e) => s + e.amountCents, 0);
+  const liveStripe = hasLoadedSnapshot && snapshot.config.mode === "live" && snapshot.config.payments === "stripe";
 
   const filteredBounties = snapshot.bounties.filter((b) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return b.title.toLowerCase().includes(q) || b.description.toLowerCase().includes(q) || b.id.includes(q);
   });
+  const currentInspectedBounty = inspectedBounty
+    ? snapshot.bounties.find((bounty) => bounty.id === inspectedBounty.id) ?? inspectedBounty
+    : null;
 
   return (
     <div className="app-viewport">
@@ -185,10 +428,15 @@ export default function Home() {
               </div>
             </div>
 
-            <span className={`mode-badge ${snapshot.config.mode === "live" ? "live" : "demo"}`}>
+            <span className={`mode-badge ${hasLoadedSnapshot && snapshot.config.mode === "live" ? "live" : "demo"}`}>
               <span className="status-dot-ping" />
-              {snapshot.config.mode === "live" ? "Live Network" : "Demo Guild"}
+              {needsToken ? "Authorization required" : !hasLoadedSnapshot ? (connectionError ? "API unavailable" : "Connecting") : snapshot.config.mode === "live" ? `Live Network${snapshot.config.payments === "stripe" ? " · Stripe test" : ""}` : "Demo Mode"}
             </span>
+            {hasLoadedSnapshot && snapshot.config.mode === "live" && !needsToken && (
+              <span className={`mode-badge ${realtimeConnected ? "live" : "demo"}`}>
+                <span className="status-dot-ping" />{realtimeConnected ? "Realtime connected" : "Polling API"}
+              </span>
+            )}
           </div>
 
           {/* Navigation Tabs */}
@@ -240,9 +488,9 @@ export default function Home() {
           {/* Escrow Balance & Refresh */}
           <div className="header-actions">
             <div className="wallet-chip">
-              <Coins size={14} style={{ color: "var(--accent-gold)" }} />
-              <span className="wallet-label">Escrow:</span>
-              <span className="wallet-value">{balance}</span>
+              <Coins size={14} style={{ color: "#fbbf24" }} />
+              <span className="wallet-label">{needsToken ? "AUTH REQUIRED:" : !hasLoadedSnapshot ? "CONNECTING:" : liveStripe ? "TEST PAYOUTS:" : snapshot.config.mode === "live" ? "TOTAL PAID:" : "ESCROW BALANCE:"}</span>
+              <span className="wallet-value">{!hasLoadedSnapshot || needsToken ? "—" : liveStripe ? `$${(stripeTestPaid / 100).toFixed(2)}` : snapshot.config.mode === "live" ? `$${(totalPaid / 100).toFixed(2)}` : balance}</span>
             </div>
 
             <button
@@ -261,23 +509,59 @@ export default function Home() {
 
       {/* Main Content Viewport */}
       <main className="app-main-content">
+        {needsToken && (
+          <section className="clean-card" style={{ padding: 18, marginBottom: 20, border: "1px solid rgba(251, 191, 36, 0.35)", background: "rgba(120, 83, 12, 0.12)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <ShieldAlert size={18} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 2 }} />
+              <div style={{ flex: 1 }}>
+                <b style={{ color: "#f8fafc", fontSize: 13 }}>Operator authorization required</b>
+                <p style={{ color: "#cbd5e1", fontSize: 12, margin: "5px 0 12px" }}>
+                  Enter the deployment operator token to load protected network state and submit work. It stays in this browser session only.
+                </p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    aria-label="Operator token"
+                    placeholder="OPERATOR_TOKEN"
+                    value={tokenInput}
+                    onChange={(event) => setTokenInput(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === "Enter") connectToken(); }}
+                    style={{ minWidth: 240, flex: "1 1 240px", color: "#f8fafc", background: "rgba(2, 6, 23, 0.75)", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: 6, padding: "9px 11px", outline: "none", fontFamily: "var(--font-mono)", fontSize: 12 }}
+                  />
+                  <button type="button" className="arcade-btn-primary" onClick={connectToken} disabled={!tokenInput.trim()} style={{ padding: "9px 14px", fontSize: 11 }}>
+                    Connect operator session
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+        {connectionError && !needsToken && (
+          <div style={{ color: "#fda4af", fontSize: 11, marginBottom: 14, fontFamily: "var(--font-mono)" }}>{connectionError}</div>
+        )}
         {/* TAB 1: INTERACTIVE GUILD HALL ROOM */}
         {activeTab === "arcade" && (
           <div>
             {/* The Living Guild Hall Stage */}
             <ArcadeRoom
               snapshot={snapshot}
-              activeGoal={goal}
-              rewardCents={rewardCents}
               isExecuting={submitting}
-              triggerSequenceKey={taskSequenceTrigger}
+              activeRunId={activeRunId ?? undefined}
+              activeRequestKey={pendingRun?.idempotencyKey}
+              onRunLiveDemo={runLiveDemo}
+              canRunLiveDemo={canRunLiveDemo}
+              canStartWork={canStartWork}
+              authHeaders={headers()}
               shouldFail={isFailureScenario}
               onSelectCharacter={(agent, customChar) => setInspectedAgent({ agent, char: customChar })}
               onSelectBounty={(bounty) => setInspectedBounty(bounty)}
               onFillGoal={(text) => {
-                setGoal(text);
-                const lower = text.toLowerCase();
-                setIsFailureScenario(lower.includes("cryptographic proof") || lower.includes("rubric failure") || lower.includes("flawed"));
+                if (canStartWork && !pendingRun && !submitting) {
+                  setGoal(text);
+                  const lower = text.toLowerCase();
+                  setIsFailureScenario(lower.includes("cryptographic proof") || lower.includes("rubric failure") || lower.includes("flawed"));
+                }
               }}
               onSwitchTab={(tab) => setActiveTab(tab)}
             />
@@ -296,7 +580,7 @@ export default function Home() {
                 </span>
               </div>
 
-              {/* Task Specification & Example Presets */}
+              {/* Live Task Specification */}
               <label htmlFor="task-specification" className="task-field-label">
                 Task Specification
               </label>
@@ -307,18 +591,18 @@ export default function Home() {
                     type="button"
                     className={`example-chip ${ex.shouldFail ? "danger" : ""}`}
                     onClick={() => {
+                      if (!canStartWork || submitting || !!pendingRun) return;
                       arcadeAudio.playClick();
                       setGoal(ex.text);
                       setIsFailureScenario(Boolean(ex.shouldFail));
                     }}
-                    disabled={submitting}
+                    disabled={!canStartWork || submitting || !!pendingRun}
                     style={ex.shouldFail ? { borderColor: "var(--accent-red)", color: "var(--accent-red)" } : undefined}
                   >
                     {ex.label}
                   </button>
                 ))}
               </div>
-
               {/* Form Input */}
               <form onSubmit={handleSubmit}>
                 <textarea
@@ -331,7 +615,7 @@ export default function Home() {
                     setIsFailureScenario(lower.includes("cryptographic proof") || lower.includes("rubric failure") || lower.includes("flawed"));
                   }}
                   placeholder="Describe what research, analysis, or code artifact you want delivered by autonomous specialist agents..."
-                  disabled={submitting}
+                  disabled={!canStartWork || submitting || !!pendingRun}
                   required
                   minLength={10}
                   rows={3}
@@ -351,7 +635,7 @@ export default function Home() {
                 {actionSuccess && (
                   <div style={{ color: "var(--accent-green-bright)", fontSize: 12, marginTop: 10, display: "flex", alignItems: "center", gap: 8, background: "rgba(132, 169, 110, 0.15)", padding: "10px 14px", borderRadius: "var(--radius-xs)", border: "1px solid var(--accent-green)" }}>
                     <CheckCircle2 size={15} />
-                    <span>Task cleared and verified. Escrow payout settled. Review deliverable below.</span>
+                    <span>Task run completed. Review the returned deliverable and recorded payment status below.</span>
                   </div>
                 )}
 
@@ -371,7 +655,7 @@ export default function Home() {
                             arcadeAudio.playCoin();
                             setRewardCents(p.cents);
                           }}
-                          disabled={submitting}
+                          disabled={!canStartWork || submitting || !!pendingRun}
                         >
                           {p.label}
                         </button>
@@ -384,32 +668,45 @@ export default function Home() {
                       <button
                         type="button"
                         className="arcade-btn-pill"
-                        onClick={() => {
-                          arcadeAudio.playClick();
-                          setGoal(DEFAULT_GOAL);
-                        }}
-                        disabled={submitting}
+                        onClick={runLiveDemo}
+                        disabled={!canRunLiveDemo || submitting || !!pendingRun}
+                        title={canRunLiveDemo ? "Posts the safe example as a real live task with a 50¢ Stripe test authorization" : "Requires a ready authenticated live network"}
                       >
-                        Load Example
+                        Run Live Demo · $0.50
                       </button>
                     )}
 
                     <button
                       type="submit"
                       className="arcade-btn-primary"
-                      disabled={submitting || goal.trim().length < 10}
+                      disabled={!networkReady || submitting || goal.trim().length < 10}
+                      style={{ fontSize: 11, padding: "10px 18px" }}
                     >
                       {submitting ? (
                         <>
                           <RefreshCw size={13} className="spin-icon" style={{ display: "inline-block", verticalAlign: "middle", marginRight: 6 }} />
-                          Matching Agents...
+                          {snapshot.config.mode === "live" ? "Running live task…" : "Matching Agents..."}
                         </>
                       ) : (
-                        "Post Task to Guild"
+                        <>
+                          {pendingRun ? "Retry Same Request →" : "Start Live Task →"}
+                        </>
                       )}
                     </button>
+                    {pendingRun && terminalRunFailure && (
+                      <button type="button" className="arcade-btn-pill" onClick={startNewRequest} disabled={submitting}>
+                        Start a New Request
+                      </button>
+                    )}
                   </div>
                 </div>
+                {pendingRun && (
+                  <div style={{ color: terminalRunFailure ? "#fbbf24" : "#94a3b8", fontSize: 10, marginTop: 10, fontFamily: "var(--font-mono)" }}>
+                    {terminalRunFailure
+                      ? "This run is confirmed failed. Retry keeps the same request key; start a new request to use a new key."
+                      : "This request is not safe to replace yet. Goal and reward stay locked; retry the same key to resume escrow recovery."}
+                  </div>
+                )}
               </form>
             </div>
 
@@ -487,7 +784,7 @@ export default function Home() {
                 </table>
               ) : (
                 <div style={{ textAlign: "center", padding: "30px 10px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                  No completed quests yet. Post your first task on the notice board above!
+                  No completed tasks yet. Post an autonomous task in the Arcade Hall to see completed bounties here.
                 </div>
               )}
             </div>
@@ -678,7 +975,7 @@ export default function Home() {
                 Escrow Settlement Ledger
               </h2>
               <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-                Cryptographic transaction log of all micro-escrow deposits, worker settlement transfers, and refunds.
+                Recorded escrow holds, worker payouts, and refunds.
               </p>
             </div>
 
@@ -699,7 +996,7 @@ export default function Home() {
                       <tr key={entry.id} className="fintech-row" style={{ cursor: "default" }}>
                         <td style={{ padding: "14px 18px" }}>
                           <b style={{ color: entry.kind === "payout" ? "var(--accent-green-bright)" : "var(--accent-gold)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                            {entry.kind === "payout" ? "Payout Released" : "Escrow Locked"}
+                            {entry.kind === "payout" ? "Payout Released" : entry.kind === "refund" ? "Refund Issued" : "Escrow Locked"}
                           </b>
                           <span style={{ display: "block", fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginTop: 2 }}>
                             tx_{entry.id.slice(0, 8)}
@@ -720,7 +1017,7 @@ export default function Home() {
                         </td>
                         <td style={{ padding: "14px 18px", textAlign: "right" }}>
                           <span className="mono-amount" style={{ color: entry.kind === "payout" ? "var(--accent-green-bright)" : "var(--text-main)", fontSize: 15 }}>
-                            {entry.kind === "refund" ? "+" : "-"}${(entry.amountCents / 100).toFixed(2)}
+                            ${(entry.amountCents / 100).toFixed(2)}
                           </span>
                         </td>
                       </tr>
@@ -750,10 +1047,9 @@ export default function Home() {
         />
       )}
 
-      {/* Deliverable Debrief Modal */}
-      {inspectedBounty && (
+      {currentInspectedBounty && (
         <ArcadeDeliverableModal
-          bounty={inspectedBounty}
+          bounty={currentInspectedBounty}
           onClose={() => setInspectedBounty(null)}
         />
       )}

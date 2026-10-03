@@ -12,19 +12,22 @@ import {
 import { GuildNoticeBoardModal } from "./GuildNoticeBoardModal";
 import { GuildVaultModal } from "./GuildVaultModal";
 import { GuildBookshelfModal } from "./GuildBookshelfModal";
-import type { NegotiationTurn } from "@/app/api/negotiate/route";
 import type { Agent, Bounty, Snapshot } from "@/lib/contracts";
 
 export type { ArcadeCharacter };
 
 export const FAILED_DEMO_GOAL = "Provide a verified cryptographic proof and financial benchmark audit";
+type ArcadePhase = "idle" | "planning" | "funding" | "bidding" | "executing" | "delivered" | "verified" | "settling" | "paid" | "failed";
 
 interface ArcadeRoomProps {
   snapshot: Snapshot;
-  activeGoal?: string;
-  rewardCents?: number;
   isExecuting?: boolean;
-  triggerSequenceKey?: number;
+  canRunLiveDemo?: boolean;
+  canStartWork?: boolean;
+  onRunLiveDemo?: () => void;
+  activeRequestKey?: string;
+  activeRunId?: string;
+  authHeaders?: Record<string, string>;
   shouldFail?: boolean;
   onSelectCharacter?: (agent: Agent | null, customChar?: ArcadeCharacter) => void;
   onSelectBounty?: (bounty: Bounty) => void;
@@ -415,7 +418,7 @@ function getInteractiveTarget(
     return {
       type: "strategy-table",
       name: "Guild Strategy Table",
-      hint: "Click to activate quest bidding simulation",
+      hint: "Click to submit the live task",
       box: { x: 370, y: 213, w: 220, h: 84 },
     };
   }
@@ -482,32 +485,31 @@ function drawHoverCornerBrackets(
 
 export function ArcadeRoom({
   snapshot,
-  activeGoal = "",
-  rewardCents = 50,
   isExecuting = false,
-  triggerSequenceKey,
+  canRunLiveDemo = false,
+  canStartWork = false,
+  activeRequestKey,
+  activeRunId,
+  authHeaders,
   shouldFail = false,
+  onRunLiveDemo,
   onSelectCharacter,
   onSelectBounty,
   onFillGoal,
   onSwitchTab,
 }: ArcadeRoomProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [listenToVoice, setListenToVoice] = useState(false);
-  const listenToVoiceRef = useRef(listenToVoice);
-  listenToVoiceRef.current = listenToVoice;
-
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [gameLog, setGameLog] = useState<string[]>([
     "The Guild Hall is open. Fireplace crackles softly.",
     "Claude Orchestrator reviews the quest parchment.",
     "Ready: Click any character, notice board, or object to interact.",
   ]);
-  const [stagePhase, setStagePhase] = useState<"idle" | "entering" | "announcing" | "bidding" | "matched" | "executing" | "verified" | "paid" | "rejected">("idle");
   const [activeSpeech, setActiveSpeech] = useState<{ charId: string; text: string; tag: string } | null>(null);
-  const sequenceRunIdRef = useRef(0);
-  const currentTurnRef = useRef<NegotiationTurn | null>(null);
-  const wakeUpTextSleepRef = useRef<(() => void) | null>(null);
+  const narrationRequestKey = useRef("");
+  const narrationHeaders = useRef(authHeaders);
+  narrationHeaders.current = authHeaders;
 
   // Interactive Hover & Modals State
   const [hoveredTarget, setHoveredTarget] = useState<InteractiveTarget | null>(null);
@@ -535,7 +537,7 @@ export function ArcadeRoom({
       dialogue: null,
       avatarType: "questor",
       level: 12,
-      gold: 500,
+      gold: 0,
       skills: ["task architect", "escrow funder", "prompt design"],
       homeX: 240,
       homeY: 190,
@@ -558,7 +560,7 @@ export function ArcadeRoom({
       dialogueColor: "#8f79a6",
       avatarType: "claude",
       level: 99,
-      gold: 900,
+      gold: 0,
       skills: ["planning", "research", "quality review", "market analysis"],
       homeX: 480,
       homeY: 195,
@@ -580,7 +582,7 @@ export function ArcadeRoom({
       dialogue: null,
       avatarType: "gemini",
       level: 45,
-      gold: 150,
+      gold: 0,
       skills: ["data visualization", "market research", "analysis", "report writing"],
       homeX: 740,
       homeY: 240,
@@ -602,7 +604,7 @@ export function ArcadeRoom({
       dialogue: null,
       avatarType: "specialist",
       level: 52,
-      gold: 250,
+      gold: 0,
       skills: ["competitive research", "synthesis", "business strategy"],
       homeX: 740,
       homeY: 370,
@@ -624,7 +626,7 @@ export function ArcadeRoom({
       dialogue: null,
       avatarType: "sentinel",
       level: 38,
-      gold: 100,
+      gold: 0,
       skills: ["code audit", "rubric verification", "unit testing"],
       homeX: 245,
       homeY: 370,
@@ -638,7 +640,9 @@ export function ArcadeRoom({
     snapshot.agents.forEach((snapAgent) => {
       const char = charactersRef.current.find((c) => c.id === snapAgent.id);
       if (char) {
-        char.name = snapAgent.name.split(" ")[0];
+        char.name = snapAgent.name;
+        char.model = snapAgent.model;
+
         char.gold = snapAgent.balanceCents;
         char.skills = snapAgent.skills;
         char.level = Math.max(1, snapAgent.tasksCompleted * 5 + 10);
@@ -653,504 +657,211 @@ export function ArcadeRoom({
     if (next) arcadeAudio.playClick();
   };
 
-  const toggleListen = () => {
-    const next = !listenToVoice;
-    setListenToVoice(next);
-    listenToVoiceRef.current = next;
+  const toggleVoice = () => {
+    const next = !voiceEnabled;
+    setVoiceEnabled(next);
     arcadeAudio.voiceEnabled = next;
-    if (next) {
+    if (!next) {
+      arcadeAudio.stopSpeech();
+    } else {
       const ctx = arcadeAudio.initCtx();
       if (ctx && ctx.state === "suspended") {
         void ctx.resume();
       }
       arcadeAudio.playClick();
-      // If currently displaying a dialogue turn in text mode, immediately start speaking it!
-      if (currentTurnRef.current) {
-        if (wakeUpTextSleepRef.current) {
-          wakeUpTextSleepRef.current();
-        }
-        void arcadeAudio.playNegotiationTurn(currentTurnRef.current);
-      }
-    } else {
-      arcadeAudio.stopSpeech();
-      if (wakeUpTextSleepRef.current) {
-        wakeUpTextSleepRef.current();
-      }
     }
   };
 
   useEffect(() => {
-    return () => {
-      arcadeAudio.stopSpeech();
-    };
-  }, []);
+    arcadeAudio.voiceEnabled = voiceEnabled;
+    if (!voiceEnabled) arcadeAudio.stopSpeech();
+    return () => arcadeAudio.stopSpeech();
+  }, [voiceEnabled]);
 
   const addLog = useCallback((msg: string) => {
     setGameLog((prev) => [msg, ...prev.slice(0, 9)]);
   }, []);
 
-  // Run the full Live Model Negotiation & Bidding Sequence
-  const runArcadeSequence = useCallback(
-    async (customGoal?: string, customReward?: number, options?: { shouldFail?: boolean }) => {
-      // Initialize and resume browser AudioContext on user action
-      arcadeAudio.initCtx();
-
-      const runId = ++sequenceRunIdRef.current;
-      const goalText = customGoal || activeGoal || "Analyze the top opportunities for an AI agent marketplace and create a concise market brief.";
-      const rewardVal = customReward || rewardCents || 50;
-      const rewardFormatted = `$${(rewardVal / 100).toFixed(2)}`;
-      const isFailureScenario = Boolean(
-        options?.shouldFail ?? (
-          shouldFail ||
-          goalText.toLowerCase().includes("cryptographic proof") ||
-          goalText.toLowerCase().includes("rubric failure") ||
-          goalText.toLowerCase().includes("flawed")
-        )
-      );
-
-      const chars = charactersRef.current;
-      const questor = chars.find((c) => c.role === "questor")!;
-      const claude = chars.find((c) => c.id.includes("1111"))!;
-      const gemini = chars.find((c) => c.id.includes("2222"))!;
-      const specialist = chars.find((c) => c.id.includes("3333"))!;
-      const sentinel = chars.find((c) => c.id === "sentinel-worker");
-
-      // Pause idle wandering and immediately snap/prepare characters into scripted quest roles
-      chars.forEach((c) => {
-        c.dialogue = null;
-        c.dialogueTimer = 0;
-        c.wanderWaypoint = null;
-      });
-
-      claude.targetX = 480;
-      claude.targetY = 195;
-      claude.x = 480;
-      claude.y = 195;
-      claude.state = "idle";
-      claude.facing = "down";
-
-      gemini.targetX = 740;
-      gemini.targetY = 240;
-      gemini.x = 740;
-      gemini.y = 240;
-      gemini.state = "idle";
-      gemini.facing = "right";
-
-      specialist.targetX = 740;
-      specialist.targetY = 370;
-      specialist.x = 740;
-      specialist.y = 370;
-      specialist.state = "idle";
-      specialist.facing = "right";
-
-      if (sentinel) {
-        sentinel.targetX = 245;
-        sentinel.targetY = 370;
-        sentinel.x = 245;
-        sentinel.y = 370;
-        sentinel.state = "idle";
-        sentinel.facing = "left";
-      }
-
-      const sleep = (ms: number) =>
-        new Promise<boolean>((resolve) => {
-          setTimeout(() => {
-            resolve(sequenceRunIdRef.current === runId);
-          }, ms);
-        });
-
-      const speakTurn = async (turn: NegotiationTurn) => {
-        if (sequenceRunIdRef.current !== runId) return;
-        currentTurnRef.current = turn;
-
-        // If user enabled listening to voice, play real Gemini model voice (or clean voice fallback)
-        if (listenToVoiceRef.current) {
-          await arcadeAudio.playNegotiationTurn(turn);
-        } else {
-          // In text-only mode: natural reading duration based on sentence length
-          const readingTime = Math.max(1800, Math.min(turn.text.length * 28, 2800));
-          await new Promise<void>((resolve) => {
-            let settled = false;
-            const timer = setTimeout(() => {
-              if (!settled) {
-                settled = true;
-                wakeUpTextSleepRef.current = null;
-                resolve();
-              }
-            }, readingTime);
-
-            wakeUpTextSleepRef.current = () => {
-              if (!settled) {
-                settled = true;
-                clearTimeout(timer);
-                wakeUpTextSleepRef.current = null;
-                resolve();
-              }
-            };
-          });
-        }
-        currentTurnRef.current = null;
-      };
-
-      // Step 1: Traveler arrives at Guild immediately
-      setStagePhase("entering");
-      arcadeAudio.playWarp();
-      addLog("Traveler entered the Guild Hall.");
-      questor.x = 180;
-      questor.y = 160;
-      questor.targetX = 340;
-      questor.targetY = 255;
-      questor.state = "walking";
-      questor.facing = "right";
-      questor.dialogue = "Entering Guild Hall...";
-
-      // Fetch live multi-agent dialogue & spoken voice audio
-      const fetchPromise = (async () => {
-        try {
-          const res = await fetch("/api/negotiate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              goal: goalText,
-              rewardCents: rewardVal,
-              shouldFail: isFailureScenario,
-              audio: true,
-            }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data.turns) && data.turns.length >= 5) {
-              return data.turns as NegotiationTurn[];
-            }
-          }
-        } catch {
-          // ignore
-        }
-        return null;
-      })();
-
-      if (!(await sleep(850))) return;
-
-      questor.state = "idle";
-      questor.facing = "right";
-      questor.dialogue = "Preparing quest briefing...";
-
-      const turns = await fetchPromise;
-      if (sequenceRunIdRef.current !== runId) return;
-
-      const turn1 = turns?.[0] || {
-        id: "turn-1",
-        speaker: "traveler" as const,
-        speakerName: "Traveler",
-        voice: "Kore" as const,
-        text: isFailureScenario
-          ? `Traveler seeking guild assistance for this quest: "${goalText}". Strict rubric verification is required; locking ${rewardFormatted} in verified escrow.`
-          : `Traveler seeking guild assistance for this quest: "${goalText}". I am locking ${rewardFormatted} in verified escrow.`,
-        dialogueBadge: isFailureScenario
-          ? `QUEST: Cryptographic Audit [${rewardFormatted}]`
-          : `QUEST: ${goalText.slice(0, 24)}... [${rewardFormatted}]`,
-        color: "#d4b86a",
-      };
-      const turn2 = turns?.[1] || {
-        id: "turn-2",
-        speaker: "claude" as const,
-        speakerName: "Claude Orchestrator",
-        voice: "Charon" as const,
-        text: isFailureScenario
-          ? `Quest directive logged. Strict rubric enforcement active: mathematical proof and empirical benchmark validation required. Requesting specialist bids.`
-          : `Quest directive logged. Generating 768-dimensional capability embeddings and requesting specialist bids.`,
-        dialogueBadge: isFailureScenario
-          ? "Strict rubric verification active..."
-          : "Matching capability vectors...",
-        color: "#8f79a6",
-      };
-      const turn3 = turns?.[2] || {
-        id: "turn-3",
-        speaker: "gemini" as const,
-        speakerName: "Gemini Scholar",
-        voice: "Puck" as const,
-        text: isFailureScenario
-          ? `Gemini Scholar bidding. Attempting cryptographic proof generation and financial benchmark data synthesis under strict rubric.`
-          : `Gemini Scholar bidding. Capability fit 94.2% on market synthesis and visualization planning.`,
-        dialogueBadge: isFailureScenario
-          ? "BID: 91.2% Fit · Attempting proof"
-          : "BID: 94.2% Fit · Ready to execute",
-        color: "#6d8e9c",
-      };
-      const turn4 = turns?.[3] || {
-        id: "turn-4",
-        speaker: "specialist" as const,
-        speakerName: "Specialist Ranger",
-        voice: "Fenrir" as const,
-        text: isFailureScenario
-          ? `Specialist Ranger bidding. Warning: cryptographic proofs have a high error rate. Strict rubric threshold set to 85.0%.`
-          : `Specialist Ranger bidding. Prepared for competitive rubric verification with 88.5% vector similarity.`,
-        dialogueBadge: isFailureScenario
-          ? "BID: 86.5% Fit · Rubric warning"
-          : "BID: 88.5% Fit · Standby",
-        color: "#84a96e",
-      };
-      const turn5 = turns?.[4] || {
-        id: "turn-5",
-        speaker: "claude" as const,
-        speakerName: "Claude Orchestrator",
-        voice: "Charon" as const,
-        text: isFailureScenario
-          ? `Contract awarded to Gemini Scholar for ${rewardFormatted}. Escrow secured in Vault. Deliverable must satisfy verification rubric.`
-          : `Evaluation complete. Gemini Scholar demonstrates optimal semantic alignment at 94.2%. Contract awarded at ${rewardFormatted}. Escrow secured.`,
-        dialogueBadge: isFailureScenario
-          ? "Awarded to Gemini (Strict Rubric)"
-          : `Awarded to Gemini for ${rewardFormatted}`,
-        color: "#84a96e",
-      };
-
-      // Step 2: Traveler speaks & posts quest (Turn 1)
-      setStagePhase("announcing");
-      questor.state = "idle";
-      questor.facing = "right";
-      questor.dialogue = turn1.dialogueBadge;
-      questor.dialogueColor = turn1.color || "#d4b86a";
-      setActiveSpeech({ charId: questor.id, text: turn1.text, tag: "TRAVELER" });
-      arcadeAudio.playTalkChirp(turn1.speaker);
-      arcadeAudio.playCoin();
-      addLog(`Traveler: "${turn1.text}"`);
-      await speakTurn(turn1);
-      if (sequenceRunIdRef.current !== runId) return;
-
-      if (!(await sleep(400))) return;
-
-      // Step 3: Claude Orchestrator addresses the room and requests specialist bids (Turn 2)
-      setStagePhase("bidding");
-      claude.dialogue = turn2.dialogueBadge;
-      claude.dialogueColor = turn2.color || "#8f79a6";
-      claude.facing = "down";
-      arcadeAudio.playTalkChirp(turn2.speaker);
-      arcadeAudio.playBid();
-      setActiveSpeech({ charId: claude.id, text: turn2.text, tag: "CLAUDE ORCHESTRATOR" });
-      addLog(`Claude: "${turn2.text}"`);
-
-      // Workers gather at center strategy table to respond
-      gemini.targetX = 620;
-      gemini.targetY = 245;
-      gemini.state = "walking";
-      gemini.facing = "left";
-
-      specialist.targetX = 480;
-      specialist.targetY = 330;
-      specialist.state = "walking";
-      specialist.facing = "up";
-
-      await speakTurn(turn2);
-      if (sequenceRunIdRef.current !== runId) return;
-
-      if (!(await sleep(500))) return;
-
-      // Step 4: Gemini Scholar steps up and bids (Turn 3)
-      gemini.state = "bidding";
-      gemini.facing = "left";
-      gemini.dialogue = turn3.dialogueBadge;
-      gemini.dialogueColor = turn3.color || "#6d8e9c";
-      arcadeAudio.playTalkChirp(turn3.speaker);
-      arcadeAudio.playBid();
-      setActiveSpeech({ charId: gemini.id, text: turn3.text, tag: "GEMINI SCHOLAR" });
-      addLog(`Gemini: "${turn3.text}"`);
-      await speakTurn(turn3);
-      if (sequenceRunIdRef.current !== runId) return;
-
-      if (!(await sleep(400))) return;
-
-      // Step 5: Specialist Ranger bids / acknowledges (Turn 4)
-      specialist.state = "bidding";
-      specialist.facing = "up";
-      specialist.dialogue = turn4.dialogueBadge;
-      specialist.dialogueColor = turn4.color || "#84a96e";
-      arcadeAudio.playTalkChirp(turn4.speaker);
-      setActiveSpeech({ charId: specialist.id, text: turn4.text, tag: "SPECIALIST RANGER" });
-      addLog(`Specialist: "${turn4.text}"`);
-      await speakTurn(turn4);
-      if (sequenceRunIdRef.current !== runId) return;
-
-      if (!(await sleep(400))) return;
-
-      // Step 6: Claude awards contract to Gemini (Turn 5)
-      setStagePhase("matched");
-      claude.dialogue = turn5.dialogueBadge;
-      claude.dialogueColor = turn5.color || "#84a96e";
-      claude.facing = "down";
-      gemini.state = "celebrating";
-      specialist.dialogue = null;
-      specialist.targetX = 740;
-      specialist.targetY = 370;
-      specialist.state = "walking";
-      specialist.facing = "right";
-
-      arcadeAudio.playTalkChirp("claude");
-      arcadeAudio.playFanfare();
-      setActiveSpeech({ charId: claude.id, text: turn5.text, tag: "CONTRACT AWARD" });
-      addLog(`Claude: "${turn5.text}"`);
-      await speakTurn(turn5);
-      if (sequenceRunIdRef.current !== runId) return;
-
-      if (!(await sleep(500))) return;
-
-      // Step 7: Gemini works at research desk
-      setStagePhase("executing");
-      gemini.targetX = 740;
-      gemini.targetY = 240;
-      gemini.state = "working";
-      gemini.facing = "right";
-      gemini.dialogue = isFailureScenario ? "Synthesizing proof & benchmarks..." : "Writing research brief...";
-      gemini.dialogueColor = "#6d8e9c";
-      addLog(isFailureScenario ? "Gemini attempting cryptographic benchmark deliverable..." : "Gemini executing deliverable at research desk...");
-
-      if (!(await sleep(2200))) return;
-
-      if (!isFailureScenario) {
-        // Step 8: Deliverable presented & verified (Success Flow)
-        setStagePhase("verified");
-        gemini.targetX = 480;
-        gemini.targetY = 250;
-        gemini.state = "walking";
-        gemini.facing = "up";
-        gemini.dialogue = "Deliverable ready!";
-        arcadeAudio.playClick();
-        arcadeAudio.playTalkChirp("gemini");
-        setActiveSpeech({ charId: gemini.id, text: "Gemini: Deliverable generated with executive evidence and visualization spec.", tag: "DELIVERABLE PROOF" });
-        addLog("Gemini: Deliverable submitted for quality review.");
-
-        if (!(await sleep(1400))) return;
-
-        claude.dialogue = "Rubric check: Passed 100%!";
-        claude.dialogueColor = "#84a96e";
-        arcadeAudio.playTalkChirp("claude");
-        setActiveSpeech({ charId: claude.id, text: "Claude: Quality review passed. Deliverable satisfies all rubric criteria. Releasing escrow.", tag: "ORCHESTRATOR AUDIT" });
-        addLog("Claude: Quality review passed. Escrow release authorized.");
-
-        if (!(await sleep(1500))) return;
-
-        // Step 9: Settlement & Gold Payout
-        setStagePhase("paid");
-        arcadeAudio.playPayout();
-        arcadeAudio.playTalkChirp("gemini");
-        gemini.state = "celebrating";
-        gemini.dialogue = `+${rewardFormatted} Escrow Settled!`;
-        gemini.dialogueColor = "#d4b86a";
-        gemini.gold += rewardVal;
-        questor.dialogue = "Deliverable accepted!";
-        setActiveSpeech({ charId: questor.id, text: `Traveler: Deliverable accepted. ${rewardFormatted} transferred to Gemini Wallet.`, tag: "ESCROW SETTLEMENT" });
-        addLog(`Escrow released: ${rewardFormatted} transferred to Gemini Wallet.`);
-      } else {
-        // Step 8: Quality Review / Audit fails (Rejection Flow)
-        setStagePhase("verified");
-        gemini.targetX = 480;
-        gemini.targetY = 250;
-        gemini.state = "walking";
-        gemini.facing = "up";
-        gemini.dialogue = "Deliverable ready!";
-        arcadeAudio.playClick();
-        arcadeAudio.playTalkChirp("gemini");
-        setActiveSpeech({ charId: gemini.id, text: "Gemini: Deliverable generated with cryptographic proofs and financial benchmark tables.", tag: "DELIVERABLE PROOF" });
-        addLog("Gemini: Deliverable submitted for quality review.");
-
-        if (!(await sleep(1400))) return;
-
-        // Claude inspects deliverable and rejects it
-        claude.dialogue = "RUBRIC FAILED: Score 34/100 · Missing evidence";
-        claude.dialogueColor = "#c96b6b";
-        arcadeAudio.playReject();
-        addLog("Claude: Deliverable failed verification rubric (Score: 34/100). Escrow payout denied.");
-        setActiveSpeech({
-          charId: claude.id,
-          text: "Claude Orchestrator: Quality review failed. The submitted artifact failed rubric verification. Payout denied. Refunding escrow to Traveler.",
-          tag: "ORCHESTRATOR AUDIT",
-        });
-
-        const turn6 = turns?.[5] || {
-          id: "turn-6",
-          speaker: "claude" as const,
-          speakerName: "Claude Orchestrator",
-          voice: "Charon" as const,
-          text: "Quality review failed. The submitted artifact failed rubric verification. Payout denied. Refunding escrow to Traveler.",
-          dialogueBadge: "RUBRIC FAILED: Score 34/100 · Missing evidence",
-          color: "#c96b6b",
-        };
-        await speakTurn(turn6);
-        if (sequenceRunIdRef.current !== runId) return;
-
-        if (!(await sleep(1500))) return;
-
-        // Step 9: Escrow Refund (instead of Worker Payout)
-        setStagePhase("rejected");
-        arcadeAudio.playRefund();
-        gemini.state = "rejected";
-        gemini.dialogue = "Delivery Rejected · Revising";
-        gemini.dialogueColor = "#c96b6b";
-        // Worker does NOT receive bounty gold; instead, Traveler is refunded!
-        questor.gold += rewardVal;
-        questor.dialogue = `+${rewardFormatted} Escrow Refunded`;
-        questor.dialogueColor = "#84a96e";
-        setActiveSpeech({
-          charId: questor.id,
-          text: `Traveler: Quality review failed. ${rewardFormatted} escrow stake refunded to wallet.`,
-          tag: "ESCROW REFUND",
-        });
-        addLog(`Escrow refunded: ${rewardFormatted} returned to Traveler wallet.`);
-      }
-
-      if (!(await sleep(3500))) return;
-
-      // Reset to idle and resume autonomous life
-      setStagePhase("idle");
-      questor.dialogue = null;
-      questor.targetX = 240;
-      questor.targetY = 190;
-      questor.state = "idle";
-      questor.facing = "down";
-
-      claude.dialogue = "Awaiting quests...";
-      claude.dialogueColor = "#8f79a6";
-      claude.targetX = 480;
-      claude.targetY = 195;
-      claude.state = "idle";
-      claude.facing = "down";
-
-      gemini.dialogue = null;
-      gemini.targetX = 740;
-      gemini.targetY = 240;
-      gemini.state = "idle";
-      gemini.facing = "right";
-
-      specialist.dialogue = null;
-      specialist.targetX = 740;
-      specialist.targetY = 370;
-      specialist.state = "idle";
-      specialist.facing = "right";
-
-      if (sentinel) {
-        sentinel.dialogue = null;
-        sentinel.targetX = 245;
-        sentinel.targetY = 370;
-        sentinel.state = "idle";
-        sentinel.facing = "left";
-      }
-
-      setActiveSpeech(null);
-
-      // Stagger idle timers to smoothly resume autonomous wandering and interactions
-      chars.forEach((c, idx) => {
-        c.idlePauseTimer = 3.0 + idx * 2.0 + Math.random() * 2.0;
-        c.chatCooldownTimer = 6.0;
-        c.wanderWaypoint = null;
-      });
-    },
-    [activeGoal, rewardCents, addLog, shouldFail]
-  );
+  // Selected request identity wins over snapshot recency. Since snapshots are
+  // capped, a missing selected row means "awaiting", never "not persisted".
+  const hasSelectedIdentity = Boolean(activeRequestKey || activeRunId);
+  const currentRun = activeRequestKey
+    ? snapshot.runs.find((run) => run.idempotencyKey === activeRequestKey) ?? null
+    : activeRunId
+      ? snapshot.runs.find((run) => run.id === activeRunId) ?? null
+      : snapshot.runs.slice().sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] ?? null;
+  const awaitingSelectedRun = hasSelectedIdentity && !currentRun;
+  const currentBounty = snapshot.bounties.find((bounty) => bounty.runId === currentRun?.id) ?? null;
+  const currentWorker = snapshot.agents.find((agent) => agent.id === currentBounty?.workerId) ?? null;
+  const runActivity = currentRun ? snapshot.activity.filter((entry) => entry.runId === currentRun.id).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)).slice(-10) : [];
+  const actualPhase: ArcadePhase = !currentRun
+    ? isExecuting || awaitingSelectedRun ? "planning" : "idle"
+    : currentBounty?.status === "paid" ? "paid"
+      : currentBounty?.status === "failed" || currentRun.status === "failed" && currentBounty?.status !== "settling" ? "failed"
+        : !currentBounty ? "planning"
+          : currentBounty.status === "funding" ? "funding"
+            : currentBounty.status === "open" ? "bidding"
+              : currentBounty.status === "claimed" ? "executing"
+                : currentBounty.status === "delivered" ? "delivered"
+                  : currentBounty.status === "verified" ? "verified"
+                    : currentBounty.status === "settling" ? "settling" : "planning";
+  const stagePhase = actualPhase;
+  const canStartRoomAction = snapshot.config.mode === "live"
+    && canRunLiveDemo && !isExecuting && currentRun?.status !== "running";
 
   useEffect(() => {
-    if ((isExecuting || (triggerSequenceKey && triggerSequenceKey > 0)) && stagePhase === "idle") {
-      void runArcadeSequence(activeGoal, rewardCents, { shouldFail });
+    if (!currentRun) {
+      if (isExecuting || awaitingSelectedRun) {
+        setActiveSpeech({ charId: "questor-player", text: "Awaiting selected run state from the persisted snapshot.", tag: "LIVE REQUEST" });
+        setGameLog(["REQUEST: Awaiting selected run state."]);
+      }
+      return;
     }
-  }, [isExecuting, triggerSequenceKey, stagePhase, runArcadeSequence, activeGoal, rewardCents, shouldFail]);
+    const entries = runActivity.slice().reverse().map((entry) => {
+      const actor = snapshot.agents.find((agent) => agent.id === entry.actorId);
+      return `${entry.actorId ? actor?.name ?? "AGENT" : "SYSTEM"}: ${entry.message}`;
+    });
+    setGameLog(entries.length ? entries : [`SYSTEM: Run ${currentRun.status}; waiting for agent activity.`]);
+  }, [currentRun?.id, currentRun?.status, isExecuting, runActivity.map((entry) => entry.id).join("|"), snapshot.agents, awaitingSelectedRun]);
+
+  useEffect(() => {
+    if (!currentRun) return;
+    const latest = runActivity[runActivity.length - 1];
+    if (latest) {
+      const actor = snapshot.agents.find((agent) => agent.id === latest.actorId);
+      setActiveSpeech({ charId: latest.actorId ?? "11111111-1111-4111-8111-111111111111", text: latest.message, tag: actor?.name ?? latest.type.toUpperCase() });
+    }
+  }, [currentRun?.id, runActivity.at(-1)?.id, snapshot.agents]);
+
+  // Optional speech is derived exclusively from the authenticated, persisted run.
+  // Narrate only once per selected persisted run; lifecycle text below continues
+  // to update from snapshots without another paid TTS request.
+  useEffect(() => {
+    const statusKey = currentRun
+      ? currentRun.id
+      : "";
+    if (snapshot.config.mode !== "live" || !currentRun || !statusKey) {
+      if (!voiceEnabled) arcadeAudio.stopSpeech();
+      return;
+    }
+    if (narrationRequestKey.current === statusKey) return;
+    narrationRequestKey.current = statusKey;
+
+    const controller = new AbortController();
+    let active = true;
+    void (async () => {
+      try {
+        const response = await fetch("/api/negotiate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...narrationHeaders.current },
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: controller.signal,
+          body: JSON.stringify({
+            runId: currentRun.id,
+            idempotencyKey: currentRun.idempotencyKey,
+            synthesizeAudio: voiceEnabled,
+          }),
+        });
+        if (!response.ok) return;
+        const payload: unknown = await response.json();
+        if (!payload || typeof payload !== "object") return;
+        const narration = payload as { success?: unknown; mode?: unknown; turns?: unknown };
+        if (narration.success !== true || narration.mode !== "live" || !Array.isArray(narration.turns)) return;
+        const turns = narration.turns;
+        for (const candidate of turns) {
+          if (!active || !candidate || typeof candidate !== "object") return;
+          const turn = candidate as {
+            speaker?: unknown;
+            speakerName?: unknown;
+            text?: unknown;
+            audioBase64?: unknown;
+            audioMimeType?: unknown;
+          };
+          const speaker = String(turn.speaker ?? "");
+          const speakerName = typeof turn.speakerName === "string" ? turn.speakerName : "";
+          const text = typeof turn.text === "string" ? turn.text : "";
+          if (!(["traveler", "claude", "gemini", "specialist"].includes(speaker) && speakerName && text && text.length <= 2000)) continue;
+          setActiveSpeech({ charId: currentRun.id, text, tag: speakerName });
+          if (voiceEnabled) {
+            await arcadeAudio.playNegotiationTurn({
+              speaker: speaker as "traveler" | "claude" | "gemini" | "specialist",
+              text,
+              ...(typeof turn.audioBase64 === "string" ? { audioBase64: turn.audioBase64 } : {}),
+              ...(typeof turn.audioMimeType === "string" ? { audioMimeType: turn.audioMimeType } : {}),
+            });
+          } else {
+            await new Promise((r) => setTimeout(r, Math.max(1800, Math.min(text.length * 28, 2800))));
+          }
+        }
+      } catch {
+        // Narration is optional; keep the persisted lifecycle UI available.
+      }
+    })();
+    return () => {
+      active = false;
+      controller.abort();
+      arcadeAudio.stopSpeech();
+    };
+  }, [voiceEnabled, snapshot.config.mode, currentRun?.id, currentRun?.idempotencyKey]);
+
+  const lastPaidBountyId = useRef<string | null>(null);
+  useEffect(() => {
+    if (currentBounty?.status === "paid" && lastPaidBountyId.current !== currentBounty.id) {
+      lastPaidBountyId.current = currentBounty.id;
+      arcadeAudio.playPayout();
+    }
+  }, [currentBounty?.id, currentBounty?.status]);
+
+  const lastFailedBountyId = useRef<string | null>(null);
+  useEffect(() => {
+    if (currentBounty?.status === "failed" && lastFailedBountyId.current !== currentBounty.id) {
+      lastFailedBountyId.current = currentBounty.id;
+      arcadeAudio.playReject();
+      setTimeout(() => arcadeAudio.playRefund(), 400);
+    }
+  }, [currentBounty?.id, currentBounty?.status]);
+
+  useEffect(() => {
+    const chars = charactersRef.current;
+    const questor = chars.find((char) => char.role === "questor");
+    const claude = chars.find((char) => char.id === "11111111-1111-4111-8111-111111111111");
+    if (!currentRun) {
+      if (awaitingSelectedRun || isExecuting) {
+        if (questor) questor.dialogue = isExecuting ? "SUBMITTING REQUEST..." : "AWAITING RUN STATE";
+        if (claude) { claude.state = "idle"; claude.dialogue = "Waiting for persisted work..."; }
+        chars.filter((char) => char.role === "worker").forEach((char) => { char.state = "idle"; char.dialogue = null; char.bidSimilarity = undefined; });
+      }
+      return;
+    }
+    const worker = currentWorker ? chars.find((char) => char.id === currentWorker.id) : null;
+    const latest = runActivity[runActivity.length - 1];
+    if (questor) {
+      questor.dialogue = currentBounty ? `${currentBounty.status.toUpperCase()}: ${currentBounty.title.slice(0, 24)}` : currentRun.status === "failed" ? "REQUEST FAILED · NO BOUNTY" : "REQUEST RECORDED";
+      questor.dialogueColor = currentBounty?.status === "failed" || currentRun.status === "failed" ? "#fbbf24" : "#fbbf24";
+    }
+    if (claude) {
+      claude.state = "working";
+      claude.dialogue = latest?.message ?? (currentBounty ? `Bounty ${currentBounty.status}` : `Run ${currentRun.status}`);
+      claude.dialogueColor = currentRun.status === "failed" ? "#fbbf24" : "#c084fc";
+    }
+    chars.filter((char) => char.role === "worker").forEach((char) => {
+      if (char.id === worker?.id) {
+        char.bidSimilarity = currentBounty?.similarity == null ? undefined : Math.round(currentBounty.similarity * 100);
+        char.state = currentBounty?.status === "paid" ? "celebrating" : currentBounty?.status === "open" ? "bidding" : currentBounty?.status === "claimed" || currentBounty?.status === "delivered" || currentBounty?.status === "verified" || currentBounty?.status === "settling" ? "working" : "idle";
+        char.dialogue = currentBounty?.status === "paid" ? `PAID $${(currentBounty.rewardCents / 100).toFixed(2)} · VERIFIED TRANSFER` : currentBounty?.similarity != null ? `MATCH ${Math.round(currentBounty.similarity * 100)}% · ${currentBounty.status.toUpperCase()}` : currentBounty?.status.toUpperCase() ?? null;
+        char.dialogueColor = currentBounty?.status === "paid" ? "#34d399" : "#38bdf8";
+      } else {
+        char.bidSimilarity = undefined;
+        char.state = "idle";
+        char.dialogue = null;
+      }
+    });
+  }, [currentBounty?.id, currentBounty?.status, currentBounty?.similarity, currentBounty?.rewardCents, currentRun?.id, currentRun?.status, currentWorker?.id, isExecuting, runActivity.at(-1)?.id, awaitingSelectedRun]);
+
+  const runArcadeSequence = useCallback(() => {
+    if (canStartRoomAction) onRunLiveDemo?.();
+  }, [canStartRoomAction, onRunLiveDemo]);
 
   // Track hover on interactive objects
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1192,6 +903,10 @@ export function ArcadeRoom({
       }
 
       if (target.type === "notice-board") {
+        if (!canStartWork || snapshot.config.mode !== "live") {
+          addLog("Notice board presets are unavailable until the workspace is ready.");
+          return;
+        }
         arcadeAudio.playPaper();
         setShowNoticeBoardModal(true);
         addLog("Inspecting Guild Notice Board.");
@@ -1228,10 +943,12 @@ export function ArcadeRoom({
 
       if (target.type === "strategy-table") {
         arcadeAudio.playClick();
-        if (stagePhase === "idle") {
+        if (canStartRoomAction) {
           runArcadeSequence();
+          addLog("Submitting a real live task request.");
+        } else {
+          addLog("The guild table is unavailable until the workspace is ready and no request is pending.");
         }
-        addLog("Activated the strategy table for quest dispatch simulation.");
         return;
       }
 
@@ -1691,25 +1408,29 @@ export function ArcadeRoom({
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [snapshot]);
+  }, [currentWorker, snapshot, stagePhase]);
 
   return (
     <div className="arcade-cabinet-container">
       {/* Header Marquee Bar */}
       <div className="arcade-marquee-bar">
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h2 className="arcade-marquee-title">
-            The Adventurer&apos;s Guild Hall
-          </h2>
+          <div>
+            <h2 className="arcade-marquee-title">The Adventurer&apos;s Guild Hall</h2>
+            <span style={{ color: stagePhase === "failed" ? "#fbbf24" : stagePhase === "paid" ? "#34d399" : "#94a3b8", fontFamily: "var(--font-mono)", fontSize: 9 }}>
+              {currentRun ? <>{stagePhase.toUpperCase()} · {currentWorker?.name ?? "No worker assigned"}</> : isExecuting || awaitingSelectedRun ? "AWAITING SELECTED RUN STATE" : "LIVE NETWORK · PERSISTED STATE"}
+            </span>
+          </div>
+
         </div>
 
         {/* Controls */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span
             style={{
               fontSize: 10,
               fontFamily: "var(--font-mono)",
-              color: listenToVoice ? "var(--accent-green-bright)" : "var(--accent-gold)",
+              color: voiceEnabled ? "var(--accent-green-bright)" : "var(--accent-gold)",
               background: "var(--bg-input)",
               padding: "5px 10px",
               borderRadius: "var(--radius-xs)",
@@ -1717,45 +1438,32 @@ export function ArcadeRoom({
               letterSpacing: "0.4px",
             }}
           >
-            {listenToVoice ? "Listening to Voices" : "Text Only Mode"}
+            {voiceEnabled ? "Listening to Voices" : "Text Only Mode"}
           </span>
 
           <button
-            onClick={toggleListen}
-            className={`arcade-btn-pill ${listenToVoice ? "active" : ""}`}
+            onClick={toggleVoice}
+            className={`arcade-btn-pill ${voiceEnabled ? "active" : ""}`}
             title="Toggle between listening to spoken model voice audio or reading text-only dialogue"
           >
-            {listenToVoice ? "Voice Audio: Active" : "Voice Audio: Off"}
+            {voiceEnabled ? "Voice Audio: Active" : "Voice Audio: Off"}
           </button>
 
           <button
             onClick={toggleSound}
             className={`arcade-btn-pill ${soundEnabled ? "active" : ""}`}
-            title="Toggle audio sound effects"
+            title="Toggle audio effects"
           >
-            {soundEnabled ? "SFX: On" : "SFX: Muted"}
+            {soundEnabled ? "Sound: On" : "Sound: Muted"}
           </button>
 
           <button
-            onClick={() => void runArcadeSequence()}
+            onClick={() => runArcadeSequence()}
             className="arcade-btn-primary"
-            disabled={stagePhase !== "idle"}
-            title="Simulate successful quest dispatch and payout"
+            disabled={!canStartRoomAction}
+            title={canStartRoomAction ? "Submit a real task to the live network" : "Requires a ready authenticated live network"}
           >
-            Simulate Quest Dispatch
-          </button>
-
-          <button
-            onClick={() => void runArcadeSequence(
-              FAILED_DEMO_GOAL,
-              50,
-              { shouldFail: true }
-            )}
-            className="arcade-btn-danger"
-            disabled={stagePhase !== "idle"}
-            title="Simulate rejected quest with rubric failure and escrow refund"
-          >
-            Simulate Rejected Quest
+            Run Live Demo
           </button>
         </div>
       </div>
@@ -1812,7 +1520,7 @@ export function ArcadeRoom({
               : "Click the Notice Board, Vault, Bookshelf, or characters to interact"}
           </span>
           <span style={{ color: "var(--accent-gold)", fontSize: 10, letterSpacing: "0.5px" }}>
-            {listenToVoice ? "Live Spoken Voice Active" : "Text Dialogue Mode"}
+            {voiceEnabled ? "Live Spoken Voice Active" : "Text Dialogue Mode"}
           </span>
         </div>
       </div>
@@ -1828,6 +1536,10 @@ export function ArcadeRoom({
           }}
           onLoadGoal={(text) => {
             setShowNoticeBoardModal(false);
+            if (!canStartWork) {
+              addLog("Preset selection is unavailable until the workspace is ready.");
+              return;
+            }
             onFillGoal?.(text);
           }}
         />

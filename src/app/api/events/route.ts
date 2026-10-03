@@ -19,7 +19,15 @@ export async function GET(request: Request) {
           try { controller.enqueue(encoder.encode(`event: error\ndata: {"error":"Snapshot is temporarily unavailable"}\n\n`)); } catch { /* stream closed */ }
         } finally { sending = false; }
       };
-      void send(); unsubscribe = subscribeChanges(() => { void send(); }); timer = setInterval(() => { void send(); }, getConfig().storage === "local" ? 750 : 15_000);
+      void send();
+      let pollingInterval = getConfig().storage === "local" ? 750 : 15_000;
+      try {
+        unsubscribe = subscribeChanges(() => { void send(); });
+      } catch {
+        // Keep SSE usable during a realtime outage by polling snapshots more often.
+        pollingInterval = 1_500;
+      }
+      timer = setInterval(() => { void send(); }, pollingInterval);
       heartbeat = setInterval(() => { try { controller.enqueue(encoder.encode(": keep-alive\n\n")); } catch { /* stream closed */ } }, 10_000);
       request.signal.addEventListener("abort", () => { closed = true; if (timer) clearInterval(timer); if (heartbeat) clearInterval(heartbeat); unsubscribe(); try { controller.close(); } catch { /* response already closed */ } }, { once: true });
     },

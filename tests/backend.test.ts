@@ -11,8 +11,16 @@ import { runWork } from "../src/lib/engine";
 
 async function inFreshState(fn: () => Promise<void>) {
   const previous = process.cwd(); const dir = await mkdtemp(join(tmpdir(), "bountymesh-test-"));
-  process.chdir(dir); process.env.BOUNTYMESH_MODE = "demo";
-  try { await fn(); } finally { process.chdir(previous); await rm(dir, { recursive: true, force: true }); }
+  const keys = ["NODE_ENV", "BOUNTYMESH_TEST_FIXTURES", "BOUNTYMESH_MODE"];
+  const values = keys.map((key) => process.env[key]);
+  process.chdir(dir);
+  const fixture: Record<string, string> = { NODE_ENV: "test", BOUNTYMESH_TEST_FIXTURES: "local", BOUNTYMESH_MODE: "demo" };
+  Object.entries(fixture).forEach(([key, value]) => { process.env[key] = value; });
+  try { await fn(); } finally {
+    process.chdir(previous);
+    keys.forEach((key, index) => { if (values[index] === undefined) delete process.env[key]; else process.env[key] = values[index]; });
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 async function seededBounty() {
   const stamp = new Date().toISOString(); const id = randomUUID();
@@ -81,7 +89,7 @@ test("failed work returns a held demo balance through an idempotent refund", asy
   assert.equal(snapshot.ledger.filter((entry) => entry.bountyId === bounty.id && entry.kind === "refund").length, 1);
 }));
 
-test("demo run executes its full lifecycle and repeated key does not pay twice", async () => inFreshState(async () => {
+test("isolated workflow fixture executes its lifecycle and repeated key does not pay twice", async () => inFreshState(async () => {
   const input = { goal: "Prepare a short market brief with a chart plan", rewardCents: 50, idempotencyKey: randomUUID() };
   const [first, concurrent] = await Promise.all([runWork(input), runWork(input)]);
   const retry = await runWork(input);

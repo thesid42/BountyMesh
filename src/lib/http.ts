@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { getConfig, getEnv } from "./config";
 import type { RunInput } from "./contracts";
 
@@ -9,24 +9,74 @@ function bearer(request: Request): boolean {
   const a = Buffer.from(supplied); const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
 }
+function requestOrigin(request: Request): string {
+  const targetUrl = new URL(request.url);
+  const host = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? targetUrl.host).split(",")[0].trim();
+  const protocol = request.headers.get("x-forwarded-proto")?.split(",")[0].trim() ?? targetUrl.protocol.slice(0, -1);
+  return new URL(`${protocol}://${host}`).origin;
+}
 function sameOrigin(request: Request): boolean {
+  if (request.headers.get("sec-fetch-site") === "cross-site") return false;
   const origin = request.headers.get("origin");
   if (origin) {
     try {
-      const originUrl = new URL(origin);
-      const targetUrl = new URL(request.url);
-      const targetHost = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? targetUrl.host).split(",")[0].trim().toLowerCase();
-      const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",")[0].trim().toLowerCase();
-      const targetProtocol = forwardedProtocol ? `${forwardedProtocol}:` : targetUrl.protocol;
-      return originUrl.host.toLowerCase() === targetHost && originUrl.protocol === targetProtocol;
+      return new URL(origin).origin === requestOrigin(request);
     } catch { return false; }
   }
-  if (request.headers.get("sec-fetch-site") === "cross-site") return false;
   return true;
+}
+const SESSION_COOKIE = "bountymesh_session";
+const SESSION_SECONDS = 8 * 60 * 60;
+function signature(payload: string, secret: string): string {
+  return createHmac("sha256", secret).update(`bountymesh-session-v1:${payload}`).digest("base64url");
+}
+function session(request: Request): boolean {
+  const secret = getEnv("OPERATOR_TOKEN");
+  if (!secret || !sameOrigin(request)) return false;
+  const cookie = request.headers.get("cookie")?.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length + 1);
+  if (!cookie || cookie.length > 1024) return false;
+  const parts = cookie.split(".");
+  if (parts.length !== 2) return false;
+  const expected = Buffer.from(signature(parts[0], secret)); const supplied = Buffer.from(parts[1]);
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return false;
+  try {
+    const value = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as { version?: number; expires?: number; origin?: string };
+    const now = Math.floor(Date.now() / 1000);
+    return value.version === 1 && Number.isInteger(value.expires) && value.expires! > now
+      && value.expires! <= now + SESSION_SECONDS && value.origin === requestOrigin(request);
+  } catch { return false; }
+}
+function loopback(host: string): boolean {
+  return ["localhost", "127.0.0.1", "::1", "[::1]", "::ffff:127.0.0.1"].includes(host.toLowerCase());
+}
+function localSessionAllowed(request: Request): boolean {
+  // The launcher sets this only when Next is bound to a loopback interface.
+  // Host and forwarded headers alone cannot establish that a client is local.
+  if (getEnv("__BOUNTYMESH_LOOPBACK_BOUND") !== "1" || !request.headers.get("origin")) return false;
+  try {
+    const origin = new URL(requestOrigin(request));
+    if (!loopback(origin.hostname) || !loopback(new URL(request.url).hostname)) return false;
+    const host = request.headers.get("host");
+    if (host && new URL(`${origin.protocol}//${host}`).origin !== origin.origin) return false;
+    const forwarded = request.headers.get("x-forwarded-for");
+    return !forwarded || forwarded.split(",").every((address) => loopback(address.trim()));
+  } catch { return false; }
+}
+export function createOperatorSession(request: Request): string | null {
+  if (!sameOrigin(request)) throw new HttpError(403, "Cross-origin request rejected");
+  const protectedRequest = getConfig().mode === "live" || process.env.NODE_ENV === "production";
+  if (!protectedRequest) return null;
+  const secret = getEnv("OPERATOR_TOKEN");
+  if (!secret || (!bearer(request) && !session(request) && !localSessionAllowed(request))) {
+    throw new HttpError(401, "Operator authorization required");
+  }
+  const origin = requestOrigin(request);
+  const payload = Buffer.from(JSON.stringify({ version: 1, expires: Math.floor(Date.now() / 1000) + SESSION_SECONDS, origin, nonce: randomBytes(24).toString("base64url") })).toString("base64url");
+  return `${SESSION_COOKIE}=${payload}.${signature(payload, secret)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_SECONDS}${origin.startsWith("https:") ? "; Secure" : ""}`;
 }
 export function authorize(request: Request, mutation = false): void {
   const cfg = getConfig(); const protectedRequest = cfg.mode === "live" || process.env.NODE_ENV === "production";
-  if (protectedRequest && !bearer(request)) throw new HttpError(401, "Operator authorization required");
+  if (protectedRequest && !bearer(request) && !session(request)) throw new HttpError(401, "Operator authorization required");
   if (mutation && !sameOrigin(request)) throw new HttpError(403, "Cross-origin request rejected");
 }
 export async function readRunInput(request: Request): Promise<RunInput> {

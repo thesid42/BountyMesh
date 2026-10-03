@@ -9,6 +9,26 @@ import { embedText, planBounty, produceDeliverable, reviewDeliverable } from "./
 const active = new Map<string, { goal: string; rewardCents: number; promise: Promise<Run> }>();
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const stableKey = (prefix: string, id: string) => `${prefix}_${createHash("sha256").update(id).digest("hex").slice(0, 32)}`;
+type FailureReason = "providerHTTPstatus" | "invalidJSON" | "title" | "description" | "networktimeout" | "fetchfailure" | "database" | "unknown";
+
+function classifyFailure(error: unknown): { reason: FailureReason; status?: number } {
+  if (!(error instanceof Error)) return { reason: "unknown" };
+  const message = error.message;
+  const providerStatus = message.match(/provider returned HTTP (\d{3})/i);
+  if (providerStatus) return { reason: "providerHTTPstatus", status: Number(providerStatus[1]) };
+  if (/invalid structured output|returned no content|unsupported deliverable format/i.test(message)) return { reason: "invalidJSON" };
+  if (/invalid title/i.test(message)) return { reason: "title" };
+  if (/invalid task description|invalid deliverable content|invalid deliverable summary|invalid review/i.test(message)) return { reason: "description" };
+  if (error.name === "TimeoutError" || error.name === "AbortError" || /timed? out|timeout/i.test(message)) return { reason: "networktimeout" };
+  if (/database|postgres|postgrest|supabase|constraint|duplicate key|PGRST/i.test(message)) return { reason: "database" };
+  if (error instanceof TypeError || /fetch failed|network error/i.test(message)) return { reason: "fetchfailure" };
+  return { reason: "unknown" };
+}
+
+function warnFailure(stage: "planning" | "processing", error: unknown): void {
+  console.warn("BountyMesh run failure", { stage, ...classifyFailure(error) });
+}
+
 function shortError(error: unknown): string { return error instanceof Error ? error.message.slice(0, 350) : "The run failed unexpectedly"; }
 async function log(runId: string, bountyId: string | null, type: Parameters<typeof addActivity>[0]["type"], message: string, actorId: string | null = null) {
   await addActivity({ runId, bountyId, type, message, actorId });
@@ -112,12 +132,17 @@ async function processRun(input: RunInput, run: Run): Promise<Run> {
   if (bounty?.status === "failed") return run;
   if (!bounty) {
     try {
+      if (run.status !== "running") {
+        await updateRun(run.id, "running");
+        run = { ...run, status: "running", error: null, updatedAt: new Date().toISOString() };
+      }
       await log(run.id, null, "planning", "The orchestrator is planning a focused subcontract.", ORCHESTRATOR_ID);
       const plan = getConfig().mode === "demo" ? { title: "Market opportunity brief & chart plan", description: `Research one focused part of this goal: ${input.goal}. Deliver a concise evidence plan and a chart specification that helps a decision-maker compare relevant options. State assumptions and do not claim live research.` } : await planBounty(input.goal);
       bounty = { id: randomUUID(), runId: run.id, title: plan.title, description: plan.description, rewardCents: input.rewardCents || DEFAULT_REWARD_CENTS, status: "funding", workerId: null, escrowStatus: "unfunded", deliverable: null, similarity: null, review: null, paymentIntentId: null, transferId: null, createdAt: timestamp, updatedAt: timestamp };
       bounty = await createBounty(bounty);
       await log(run.id, bounty.id, "planning", `Created bounty: ${bounty.title}.`, ORCHESTRATOR_ID);
     } catch (error) {
+      warnFailure("planning", error);
       await updateRun(run.id, "failed", "The orchestrator could not create the task plan.");
       try { await log(run.id, null, "error", "The orchestrator could not create the task plan."); } catch { /* retain original failure */ }
       return { ...run, status: "failed", error: "The orchestrator could not create the task plan.", updatedAt: new Date().toISOString() };
@@ -130,6 +155,7 @@ async function processRun(input: RunInput, run: Run): Promise<Run> {
     await updateRun(run.id, "completed");
     return { ...run, status: "completed", error: null, updatedAt: new Date().toISOString() };
   } catch (error) {
+    warnFailure("processing", error);
     const message = shortError(error);
     // Once settlement starts, retain it for an idempotent recovery attempt; never issue a competing refund.
     try { bounty = await getBountyByRunId(run.id) ?? bounty; } catch { /* preserve the last durable state observed */ }
@@ -167,7 +193,7 @@ async function perform(input: RunInput): Promise<Run> {
   const owner = randomUUID();
   if (!await acquireRunLease(run.id, owner, 600)) throw new HttpError(409, "This run is already in progress; retry with the same idempotency key");
   try { return await processRun(input, run); }
-  finally { try { await releaseRunLease(run.id, owner); } catch (error) { console.error("BountyMesh run lease release failed", error); } }
+  finally { try { await releaseRunLease(run.id, owner); } catch (error) { warnFailure("processing", error); } }
 }
 
 export async function runWork(input: RunInput): Promise<Run> {

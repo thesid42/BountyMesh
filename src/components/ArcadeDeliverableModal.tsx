@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Copy, Check, CheckCircle2, ShieldAlert } from "lucide-react";
+import { X, Copy, Check, CheckCircle2, ShieldAlert, CircleAlert } from "lucide-react";
 import type { Bounty } from "@/lib/contracts";
 
 interface ArcadeDeliverableModalProps {
@@ -13,6 +13,10 @@ export function ArcadeDeliverableModal({ bounty, onClose }: ArcadeDeliverableMod
   const [copied, setCopied] = useState(false);
 
   if (!bounty) return null;
+
+  const failed = bounty.status === "failed";
+  const reviewPassed = ["verified", "settling", "paid"].includes(bounty.status);
+  const statusColor = failed ? "var(--accent-red)" : reviewPassed ? "var(--accent-green)" : "#64748b";
 
   const handleCopy = (text: string) => {
     void navigator.clipboard.writeText(text);
@@ -29,11 +33,11 @@ export function ArcadeDeliverableModal({ bounty, onClose }: ArcadeDeliverableMod
             <span
               className="rpg-badge"
               style={{
-                background: bounty.status === "failed" ? "var(--accent-red)" : "var(--accent-green)",
-                color: bounty.status === "failed" ? "#ffffff" : "var(--border-outer)",
+                background: statusColor,
+                color: failed ? "#ffffff" : "#000",
               }}
             >
-              {bounty.status === "paid" ? "CLEARED" : bounty.status === "failed" ? "REJECTED (REFUNDED)" : bounty.status.toUpperCase()}
+              {bounty.status === "paid" ? "CLEARED" : failed ? "REJECTED (REFUNDED)" : bounty.status.toUpperCase()}
             </span>
             <div>
               <h2 className="rpg-name">{bounty.title}</h2>
@@ -85,14 +89,14 @@ export function ArcadeDeliverableModal({ bounty, onClose }: ArcadeDeliverableMod
           <div style={{ marginTop: 16 }}>
             <span
               className="rpg-section-title"
-              style={{ color: bounty.status === "failed" ? "var(--accent-red)" : "var(--accent-green)" }}
+              style={{ color: failed ? "var(--accent-red)" : "var(--accent-green)" }}
             >
-              Rubric Audit Verdict
+              {failed ? "Run Failure / Rubric Rejection" : "Rubric Audit Verdict"}
             </span>
             <div
               style={{
-                background: bounty.status === "failed" ? "rgba(201, 107, 107, 0.12)" : "rgba(132, 169, 110, 0.12)",
-                border: `2px solid ${bounty.status === "failed" ? "var(--accent-red)" : "var(--border-outer)"}`,
+                background: failed ? "rgba(201, 107, 107, 0.12)" : "rgba(132, 169, 110, 0.12)",
+                border: `2px solid ${failed ? "var(--accent-red)" : "var(--border-outer)"}`,
                 borderRadius: 4,
                 padding: 12,
                 fontSize: 13,
@@ -107,15 +111,17 @@ export function ArcadeDeliverableModal({ bounty, onClose }: ArcadeDeliverableMod
                   gap: 6,
                   marginBottom: 4,
                   fontWeight: 700,
-                  color: bounty.status === "failed" ? "var(--accent-red)" : "var(--accent-green-bright)",
+                  color: failed ? "var(--accent-red)" : "var(--accent-green-bright)",
                   fontFamily: "var(--font-mono)",
                   fontSize: 11,
                 }}
               >
-                {bounty.status === "failed" ? <ShieldAlert size={14} /> : <CheckCircle2 size={14} />}
-                {bounty.status === "failed"
-                  ? "Verification Failed · Rubric Unsatisfied (Escrow Refunded)"
-                  : "Verification Passed · 100% Rubric Satisfaction"}
+                {failed ? <ShieldAlert size={14} /> : reviewPassed ? <CheckCircle2 size={14} /> : <CircleAlert size={14} />}
+                {failed
+                  ? "VERIFICATION FAILED · RUBRIC UNSATISFIED (ESCROW REFUNDED)"
+                  : reviewPassed
+                  ? "VERIFICATION PASSED · 100% RUBRIC SATISFACTION"
+                  : "REVIEW NOTE"}
               </div>
               {bounty.review}
             </div>

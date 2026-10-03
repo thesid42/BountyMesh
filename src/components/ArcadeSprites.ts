@@ -27,6 +27,7 @@ export interface ArcadeCharacter {
   avatarType: ArcadeAvatarType;
   level: number;
   gold: number;
+  accountRegistered?: boolean;
   skills: string[];
   // Autonomous idle and navigation properties
   idleStationId?: string;
@@ -237,6 +238,7 @@ export function drawCharacterBadge(
 ): void {
   const badgeY = Math.round(char.y + 7);
   const name = char.name;
+  const showBalance = char.accountRegistered === true;
   const balStr = `$${(char.gold / 100).toFixed(2)}`;
 
   ctx.save();
@@ -244,12 +246,13 @@ export function drawCharacterBadge(
   const nameW = ctx.measureText(name).width;
 
   ctx.font = "700 10px 'JetBrains Mono', monospace";
-  const balW = ctx.measureText(balStr).width;
+  const balW = showBalance ? ctx.measureText(balStr).width : 0;
 
   const padX = 8;
   const gap = 6;
   const coinSize = 8;
-  const totalW = Math.round(padX * 2 + nameW + gap + coinSize + 3 + balW);
+  const balanceW = showBalance ? gap + coinSize + 3 + balW : 0;
+  const totalW = Math.round(padX * 2 + nameW + balanceW);
   const badgeH = 18;
   const badgeX = Math.round(char.x - totalW / 2);
 
@@ -275,22 +278,24 @@ export function drawCharacterBadge(
   ctx.textBaseline = "middle";
   ctx.fillText(name, badgeX + padX, badgeY + badgeH / 2);
 
-  // Neutral divider dot
-  const divX = badgeX + padX + nameW + gap / 2;
-  ctx.fillStyle = "#6d5b4b";
-  ctx.beginPath();
-  ctx.arc(divX, badgeY + badgeH / 2, 1.5, 0, Math.PI * 2);
-  ctx.fill();
+  if (showBalance) {
+      // Neutral divider dot
+      const divX = badgeX + padX + nameW + gap / 2;
+      ctx.fillStyle = "#6d5b4b";
+      ctx.beginPath();
+      ctx.arc(divX, badgeY + badgeH / 2, 1.5, 0, Math.PI * 2);
+      ctx.fill();
 
-  // Pixel gold coin icon
-  const coinX = divX + gap / 2 + coinSize / 2;
-  drawPixelCoin(ctx, coinX, badgeY + badgeH / 2 - 1, coinSize);
+      // Pixel gold coin icon
+      const coinX = divX + gap / 2 + coinSize / 2;
+      drawPixelCoin(ctx, coinX, badgeY + badgeH / 2 - 1, coinSize);
 
-  // Balance text
-  ctx.font = "700 10px 'JetBrains Mono', monospace";
-  ctx.fillStyle = "#d4b86a";
-  ctx.fillText(balStr, coinX + coinSize / 2 + 3, badgeY + badgeH / 2);
+      // Balance text
+      ctx.font = "700 10px 'JetBrains Mono', monospace";
+      ctx.fillStyle = "#d4b86a";
+      ctx.fillText(balStr, coinX + coinSize / 2 + 3, badgeY + badgeH / 2);
 
+  }
   ctx.restore();
 }
 

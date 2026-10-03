@@ -19,14 +19,14 @@ export function ArcadeCharacterModal({
 }: ArcadeCharacterModalProps) {
   if (!agent && !customChar) return null;
 
-  const name = customChar?.name || agent?.name || "Guild Agent";
-  const role = customChar?.role || agent?.role || "worker";
-  const model = customChar?.model || agent?.model || "Autonomous Model";
-  const gold = customChar ? customChar.gold : agent ? agent.balanceCents : 0;
+  const name = agent?.name || customChar?.name || "Guild Agent";
+  const role = agent?.role || customChar?.role || "worker";
+  const model = agent?.model || "Guild character";
+  const gold = agent?.balanceCents;
   const level = customChar?.level || (agent ? Math.max(1, agent.tasksCompleted * 5 + 10) : 1);
-  const skills = customChar?.skills || agent?.skills || [];
+  const skills = agent?.skills || customChar?.skills || [];
   const color = customChar?.color || (role === "orchestrator" ? "var(--accent-purple)" : "var(--accent-blue)");
-  const roleDisplay = role === "orchestrator" ? "Orchestrator" : "Specialist";
+  const roleDisplay = !agent ? "Scene character" : role === "orchestrator" ? "Orchestrator" : "Specialist";
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -60,21 +60,21 @@ export function ArcadeCharacterModal({
           <div className="rpg-stat-box">
             <span className="rpg-stat-label">Vault Balance</span>
             <b className="rpg-stat-val" style={{ color: "var(--accent-gold)" }}>
-              ${(gold / 100).toFixed(2)}
+              {gold === undefined ? "—" : `$${(gold / 100).toFixed(2)}`}
             </b>
           </div>
 
           <div className="rpg-stat-box">
             <span className="rpg-stat-label">Tasks Delivered</span>
             <b className="rpg-stat-val" style={{ color: "var(--accent-green-bright)" }}>
-              {agent ? agent.tasksCompleted : 0}
+              {agent ? agent.tasksCompleted : "—"}
             </b>
           </div>
 
           <div className="rpg-stat-box" style={{ gridColumn: "span 3" }}>
             <span className="rpg-stat-label">Capability Index</span>
             <b className="rpg-stat-val" style={{ color: "var(--accent-blue)", fontSize: 13, marginTop: 2 }}>
-              pgvector 768-D Semantic Matching
+              {agent ? "Automatic skill matching" : "No worker account"}
             </b>
           </div>
         </div>
@@ -97,9 +97,11 @@ export function ArcadeCharacterModal({
         <div style={{ marginTop: 16 }}>
           <span className="rpg-section-title">Agent Dossier</span>
           <p className="rpg-lore-text">
-            {role === "orchestrator"
-              ? "Executive orchestrator of BountyMesh. Decomposes client specifications, generates 768-dimensional pgvector semantic embeddings to route sub-tasks, holds funds securely in escrow, and validates deliverable rubrics prior to settlement."
-              : `Autonomous specialist registered in the Guild Hall. Runs on ${model}, claiming matched sub-bounties and producing structured research artifacts, quantitative specifications, or code components.`}
+            {!agent
+              ? "This character decorates the guild scene. It has no connected worker account, task history, or payment balance."
+              : role === "orchestrator"
+                ? "Plans focused tasks and reviews delivered research and chart specifications before payment settlement. Workers are selected automatically by skill fit."
+                : `Registered specialist using ${model} to produce text research artifacts and visualization specifications. The server selects workers automatically by skill fit.`}
           </p>
         </div>
 
@@ -116,7 +118,7 @@ export function ArcadeCharacterModal({
             }}
             className="arcade-btn-primary"
           >
-            Assign Task to Agent
+            Create a Task
           </button>
         </div>
       </div>
