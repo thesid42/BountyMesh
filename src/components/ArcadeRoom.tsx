@@ -740,7 +740,6 @@ export function ArcadeRoom({
         void ctx.resume();
       }
       arcadeAudio.playClick();
-      arcadeAudio.playTalkChirp("claude");
     }
   };
 
@@ -1029,23 +1028,6 @@ export function ArcadeRoom({
         const realAgent = snapshot.agents.find((a) => a.id === target.char?.id) || null;
         onSelectCharacter?.(realAgent, target.char);
         addLog(`Opened character dossier: ${target.char.name}.`);
-        if (voiceEnabled) {
-          const charName = target.char.name;
-          const greeting =
-            target.char.role === "orchestrator"
-              ? "Claude Orchestrator ready. Standing by to review and route quest specifications."
-              : target.char.role === "questor"
-              ? "Traveler logged in. Ready to fund verified escrow for autonomous deliverables."
-              : `${charName} ready for subcontracting. Specialized capabilities online.`;
-          void arcadeAudio.playNegotiationTurn({
-            speaker:
-              target.char.role === "questor" ? "traveler" :
-              target.char.avatarType === "claude" ? "claude" :
-              target.char.avatarType === "gemini" ? "gemini" :
-              target.char.avatarType === "specialist" ? "specialist" : "sentinel",
-            text: greeting,
-          });
-        }
         return;
       }
 
@@ -1504,12 +1486,6 @@ export function ArcadeRoom({
                   speaker.avatarType === "specialist" ? "specialist" :
                   speaker.avatarType === "sentinel" ? "sentinel" : "traveler";
                 arcadeAudio.playTalkChirp(speakerKey);
-                if (voiceEnabled) {
-                  void arcadeAudio.playNegotiationTurn({
-                    speaker: speakerKey,
-                    text: remark,
-                  });
-                }
               }
             }
           }
@@ -1630,15 +1606,15 @@ export function ArcadeRoom({
               letterSpacing: "0.4px",
             }}
           >
-            {voiceEnabled ? "Listening to Voices" : "Text Only Mode"}
+            {voiceEnabled ? "Task Voice: Active" : "Text Only Mode"}
           </span>
 
           <button
             onClick={toggleVoice}
             className={`arcade-btn-pill ${voiceEnabled ? "active" : ""}`}
-            title="Toggle between listening to spoken model voice audio or reading text-only dialogue"
+            title="Toggle synthesized voice narration for task briefings"
           >
-            {voiceEnabled ? "Voice Audio: Active" : "Voice Audio: Off"}
+            {voiceEnabled ? "Voice: On" : "Voice: Off"}
           </button>
 
           <button
@@ -1712,7 +1688,7 @@ export function ArcadeRoom({
               : "Click the Notice Board, Vault, Bookshelf, or characters to interact"}
           </span>
           <span style={{ color: "var(--accent-gold)", fontSize: 10, letterSpacing: "0.5px" }}>
-            {voiceEnabled ? "Live Spoken Voice Active" : "Text Dialogue Mode"}
+            {voiceEnabled ? "Task Voice Narration Active" : "Text Dialogue Mode"}
           </span>
         </div>
       </div>
