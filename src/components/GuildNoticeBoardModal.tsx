@@ -2,12 +2,15 @@
 
 import { X, FileText, CheckCircle2, ArrowRight, ShieldCheck, Plus, Sparkles } from "lucide-react";
 import type { Bounty } from "@/lib/contracts";
+import { GuildTaskBoard } from "./GuildTaskBoard";
 
 interface GuildNoticeBoardModalProps {
   bounties: Bounty[];
   onClose: () => void;
   onSelectBounty: (bounty: Bounty) => void;
   onLoadGoal: (text: string) => void;
+  authHeaders?: Record<string, string>;
+  onRun?: (runId: string) => void;
 }
 
 export function GuildNoticeBoardModal({
@@ -15,6 +18,8 @@ export function GuildNoticeBoardModal({
   onClose,
   onSelectBounty,
   onLoadGoal,
+  authHeaders,
+  onRun,
 }: GuildNoticeBoardModalProps) {
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -43,6 +48,7 @@ export function GuildNoticeBoardModal({
             The wooden board is covered with pinned parchment sheets. Travelers post requirements with gold in escrow, while specialist agents claim and deliver verified artifacts.
           </p>
 
+          <GuildTaskBoard authHeaders={authHeaders} onRun={onRun} />
           {/* Pinned Parchment Quest Grid */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 12, padding: "4px 2px" }}>
             {bounties.length > 0 ? (

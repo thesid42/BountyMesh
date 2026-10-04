@@ -20,6 +20,8 @@ import { ArcadeCharacterModal } from "@/components/ArcadeCharacterModal";
 import { ArcadeDeliverableModal } from "@/components/ArcadeDeliverableModal";
 import { arcadeAudio } from "@/lib/arcadeAudio";
 import { GuildLogo } from "@/components/GuildLogo";
+import { AgentDirectory } from "@/components/AgentDirectory";
+import { GuildTaskBoard } from "@/components/GuildTaskBoard";
 
 const EMPTY: Snapshot = {
   agents: [],
@@ -506,6 +508,7 @@ export default function Home() {
                 }
               }}
               onSwitchTab={(tab) => setActiveTab(tab)}
+              onSelectRun={(id) => { setActiveRunId(id); sessionStorage.setItem("bountymesh_active_run_id", id); void refresh(true); }}
             />
 
             {/* Quest Notice Board Creator */}
@@ -736,6 +739,7 @@ export default function Home() {
         {/* TAB 2: QUEST BOARD & REPOSITORY */}
         {activeTab === "bounties" && (
           <div>
+            <GuildTaskBoard authHeaders={headers()} onRun={(id) => { setActiveRunId(id); sessionStorage.setItem("bountymesh_active_run_id", id); setActiveTab("arcade"); void refresh(true); }} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
               <div>
                 <h2 className="panel-arcade-title" style={{ fontSize: 16, marginBottom: 6 }}>
@@ -831,83 +835,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* TAB 3: AGENTS GUILD ROSTER */}
-        {activeTab === "agents" && (
-          <div>
-            <div style={{ marginBottom: 20 }}>
-              <h2 className="panel-arcade-title" style={{ fontSize: 16, marginBottom: 6 }}>
-                Guild Agent Roster
-              </h2>
-              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-                Autonomous specialist agents registered with 768-dimensional pgvector capability embeddings.
-              </p>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 16 }}>
-              {snapshot.agents.map((agent) => {
-                const isOrchestrator = agent.role === "orchestrator";
-                const roleBadgeColor = isOrchestrator ? "var(--accent-purple)" : "var(--accent-blue)";
-
-                return (
-                  <div
-                    key={agent.id}
-                    className="fighter-card"
-                    onClick={() => {
-                      arcadeAudio.playClick();
-                      setInspectedAgent({ agent });
-                    }}
-                  >
-                    <div className="fighter-portrait-strip">
-                      <div>
-                        <h3 className="fighter-name">{agent.name}</h3>
-                        <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block", marginTop: 4 }}>
-                          {agent.model}
-                        </span>
-                      </div>
-                      <span className="rpg-badge" style={{ background: roleBadgeColor, color: "#1a1411" }}>
-                        {isOrchestrator ? "ORCHESTRATOR" : "SPECIALIST"}
-                      </span>
-                    </div>
-
-                    <div className="fighter-stat-meter">
-                      <div>
-                        <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block" }}>Vault Balance</span>
-                        <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--accent-gold)" }}>
-                          ${(agent.earnedCents / 100).toFixed(2)}
-                        </b>
-                      </div>
-                      <div>
-                        <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block" }}>Tasks Delivered</span>
-                        <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--accent-green-bright)" }}>
-                          {agent.tasksCompleted}
-                        </b>
-                      </div>
-                    </div>
-
-                    <div>
-                      <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
-                        Specialties
-                      </span>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {agent.skills.map((s, idx) => (
-                          <span key={idx} className="rpg-skill-chip">
-                            {s}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--border-inner)", display: "flex", justifyContent: "flex-end" }}>
-                      <span style={{ fontSize: 11, color: "var(--accent-gold)", fontWeight: 600 }}>
-                        View Agent Dossier
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {activeTab === "agents" && <AgentDirectory />}
 
         {/* TAB 4: ESCROW VAULT & SETTLEMENT LOG */}
         {activeTab === "ledger" && (

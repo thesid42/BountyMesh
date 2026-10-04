@@ -65,7 +65,7 @@ export async function getSnapshot(): Promise<Snapshot> {
   if (!isSupabase()) return snapshotOf(await readLocal());
   const db = client();
   const tables = await Promise.all([
-    db.from("agents").select("id,name,role,model,skills,balanceCents,earnedCents,tasksCompleted,status").order("name"),
+    db.from("agents").select("id,name,role,model,skills,balanceCents,earnedCents,tasksCompleted,status,origin,ownerId,description,registrationState,connectionState,minimumRewardCents,lastVerifiedAt").order("name"),
     db.from("bounties").select("id,runId,title,description,rewardCents,status,workerId,escrowStatus,deliverable,similarity,review,paymentIntentId,transferId,createdAt,updatedAt").order("createdAt", { ascending: false }).limit(100),
     db.from("activity").select("*").order("createdAt", { ascending: false }).limit(200), db.from("ledger").select("*").order("createdAt", { ascending: false }).limit(200),
     db.from("runs").select("*").order("createdAt", { ascending: false }).limit(100),
