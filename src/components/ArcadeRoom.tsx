@@ -845,8 +845,24 @@ export function ArcadeRoom({
         const turns = narration.turns;
         const chars = charactersRef.current;
 
-        for (const candidate of turns) {
-          if (!active || !candidate || typeof candidate !== "object") return;
+        // Pre-decode all turn audio clips into AudioBuffers for zero-latency instant playback
+        const decodedBuffers: (AudioBuffer | null)[] = await Promise.all(
+          turns.map(async (candidate) => {
+            const turn = candidate as { audioBase64?: unknown; audioMimeType?: unknown };
+            if (typeof turn.audioBase64 === "string" && turn.audioBase64) {
+              return await arcadeAudio.decodeBase64(
+                turn.audioBase64,
+                typeof turn.audioMimeType === "string" ? turn.audioMimeType : "audio/wav"
+              );
+            }
+            return null;
+          })
+        );
+
+        for (let i = 0; i < turns.length; i++) {
+          if (!active) return;
+          const candidate = turns[i];
+          if (!candidate || typeof candidate !== "object") return;
           const turn = candidate as {
             speaker?: unknown;
             speakerName?: unknown;
@@ -874,32 +890,35 @@ export function ArcadeRoom({
               : false
           );
 
-          chars.forEach((c) => { c.dialogue = null; });
-          if (speakingChar) {
-            speakingChar.dialogue = (typeof turn.dialogueBadge === "string" && turn.dialogueBadge) ? turn.dialogueBadge : text.slice(0, 36) + "...";
-            speakingChar.dialogueColor = typeof turn.color === "string" ? turn.color : (speaker === "traveler" ? "#d4b86a" : speaker === "claude" ? "#8f79a6" : speaker === "gemini" ? "#6d8e9c" : "#84a96e");
-            if (speaker === "traveler") speakingChar.facing = "right";
-            else if (speaker === "claude") speakingChar.facing = "down";
-            else speakingChar.facing = "left";
-          }
-
-          // Active speech bottom modal bar text displays the exact text being spoken
-          setActiveSpeech({ charId: speakingChar ? speakingChar.id : currentRun.id, text, tag: speakerName });
-          arcadeAudio.playTalkChirp(speaker as ArcadeSpeaker);
+          // Update text, bubble, and character animation in exact sync with audio start
+          const onTurnStart = () => {
+            chars.forEach((c) => { c.dialogue = null; });
+            if (speakingChar) {
+              speakingChar.dialogue = (typeof turn.dialogueBadge === "string" && turn.dialogueBadge) ? turn.dialogueBadge : text.slice(0, 36) + "...";
+              speakingChar.dialogueColor = typeof turn.color === "string" ? turn.color : (speaker === "traveler" ? "#d4b86a" : speaker === "claude" ? "#8f79a6" : speaker === "gemini" ? "#6d8e9c" : "#84a96e");
+              if (speaker === "traveler") speakingChar.facing = "right";
+              else if (speaker === "claude") speakingChar.facing = "down";
+              else speakingChar.facing = "left";
+            }
+            setActiveSpeech({ charId: speakingChar ? speakingChar.id : currentRun.id, text, tag: speakerName });
+            arcadeAudio.playTalkChirp(speaker as ArcadeSpeaker);
+          };
 
           if (voiceEnabled) {
             await arcadeAudio.playNegotiationTurn({
               speaker: speaker as "traveler" | "claude" | "gemini" | "specialist",
               text,
+              audioBuffer: decodedBuffers[i],
               ...(typeof turn.audioBase64 === "string" ? { audioBase64: turn.audioBase64 } : {}),
               ...(typeof turn.audioMimeType === "string" ? { audioMimeType: turn.audioMimeType } : {}),
-            });
+            }, onTurnStart);
           } else {
+            onTurnStart();
             // Natural reading duration matching text length
-            const duration = Math.max(2200, Math.min(text.length * 35, 4500));
+            const duration = Math.max(2000, Math.min(text.length * 32, 4200));
             await new Promise((r) => setTimeout(r, duration));
           }
-          await new Promise((r) => setTimeout(r, 350));
+          await new Promise((r) => setTimeout(r, 150));
         }
 
         if (active) {

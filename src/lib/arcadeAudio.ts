@@ -120,21 +120,16 @@ class ArcadeAudioEngine {
     this.stopSpeech();
   }
 
-  // Play provider audio. Raw PCM fallback is accepted only when its MIME type
-  // explicitly identifies mono 16-bit PCM and supplies a sample rate.
-  async playBase64Audio(base64: string, mimeType = "audio/wav", expectedEpoch?: number): Promise<boolean> {
-    const epoch = expectedEpoch ?? ++this.speechEpoch;
-    if (expectedEpoch === undefined) this.cancelCurrentPlayback();
-    if (!this.speechIsActive(epoch)) return false;
+  // Decode encoded audio buffer from Base64 data
+  async decodeBase64(base64: string, mimeType = "audio/wav"): Promise<AudioBuffer | null> {
     const ctx = this.initCtx();
-    if (!ctx) return false;
+    if (!ctx) return null;
 
     try {
       if (ctx.state === "suspended") await ctx.resume();
     } catch {
-      return false;
+      return null;
     }
-    if (!this.speechIsActive(epoch)) return false;
 
     let bytes: Uint8Array;
     try {
@@ -142,7 +137,7 @@ class ArcadeAudioEngine {
       bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     } catch {
-      return false;
+      return null;
     }
 
     let audioBuffer: AudioBuffer | null = null;
@@ -202,12 +197,25 @@ class ArcadeAudioEngine {
       }
     }
 
-    if (!audioBuffer) return false;
+    return audioBuffer;
+  }
+
+  // Play pre-decoded native AudioBuffer directly with zero decoding latency
+  playAudioBuffer(
+    audioBuffer: AudioBuffer,
+    expectedEpoch?: number,
+    onStart?: () => void
+  ): Promise<boolean> {
+    const epoch = expectedEpoch ?? ++this.speechEpoch;
+    if (expectedEpoch === undefined) this.cancelCurrentPlayback();
+    if (!this.speechIsActive(epoch)) return Promise.resolve(false);
+    const ctx = this.initCtx();
+    if (!ctx) return Promise.resolve(false);
 
     return new Promise<boolean>((resolve) => {
       if (!this.speechIsActive(epoch)) { resolve(false); return; }
       const source = ctx.createBufferSource();
-      source.buffer = audioBuffer!;
+      source.buffer = audioBuffer;
       if (this.playbackRate && this.playbackRate !== 1) source.playbackRate.value = this.playbackRate;
       source.connect(ctx.destination);
       this.currentSource = source;
@@ -225,14 +233,34 @@ class ArcadeAudioEngine {
       const cancel = () => finish(false);
       this.currentPlaybackResolve = cancel;
       source.onended = () => finish(this.speechIsActive(epoch));
-      timeoutId = setTimeout(() => finish(this.speechIsActive(epoch)), (audioBuffer!.duration / (this.playbackRate || 1)) * 1000 + 400);
+      timeoutId = setTimeout(() => finish(this.speechIsActive(epoch)), (audioBuffer.duration / (this.playbackRate || 1)) * 1000 + 100);
       try {
         if (!this.speechIsActive(epoch)) { finish(false); return; }
         source.start(0);
+        onStart?.();
       } catch {
         finish(false);
       }
     });
+  }
+
+  // Play provider audio. Raw PCM fallback is accepted only when its MIME type
+  // explicitly identifies mono 16-bit PCM and supplies a sample rate.
+  async playBase64Audio(
+    base64: string,
+    mimeType = "audio/wav",
+    expectedEpoch?: number,
+    onStart?: () => void
+  ): Promise<boolean> {
+    const epoch = expectedEpoch ?? ++this.speechEpoch;
+    if (expectedEpoch === undefined) this.cancelCurrentPlayback();
+    if (!this.speechIsActive(epoch)) return false;
+
+    const audioBuffer = await this.decodeBase64(base64, mimeType);
+    if (!audioBuffer) return false;
+    if (!this.speechIsActive(epoch)) return false;
+
+    return this.playAudioBuffer(audioBuffer, epoch, onStart);
   }
 
   // Fallback to browser speech synthesis if model audio is unavailable
@@ -321,27 +349,40 @@ class ArcadeAudioEngine {
   }
 
   // Play a full turn of character audio: Plays real Gemini audio if returned, or fallback
-  async playNegotiationTurn(turn: {
-    speaker: ArcadeSpeaker;
-    text: string;
-    audioBase64?: string;
-    audioMimeType?: string;
-  }): Promise<void> {
-    if (!this.enabled || !this.voiceEnabled) return;
+  async playNegotiationTurn(
+    turn: {
+      speaker: ArcadeSpeaker;
+      text: string;
+      audioBase64?: string;
+      audioMimeType?: string;
+      audioBuffer?: AudioBuffer | null;
+    },
+    onStart?: () => void
+  ): Promise<void> {
+    if (!this.enabled || !this.voiceEnabled) {
+      onStart?.();
+      return;
+    }
     const epoch = ++this.speechEpoch;
     this.cancelCurrentPlayback();
 
-    // 1. If Gemini provided actual voice audio, play the live model speech!
+    // 1. If pre-decoded native AudioBuffer is supplied, play immediately with ZERO delay
+    if (turn.audioBuffer) {
+      const played = await this.playAudioBuffer(turn.audioBuffer, epoch, onStart);
+      if (played || !this.speechIsActive(epoch)) return;
+    }
+
+    // 2. If Gemini provided actual voice audio, decode and play
     if (turn.audioBase64) {
       try {
-        const played = await this.playBase64Audio(turn.audioBase64, turn.audioMimeType, epoch);
+        const played = await this.playBase64Audio(turn.audioBase64, turn.audioMimeType, epoch, onStart);
         if (played || !this.speechIsActive(epoch)) return;
       } catch {
         // Fall back if decode fails
       }
     }
 
-    // 2. Synthesize human-like speech via Gemini API endpoint
+    // 3. Synthesize human-like speech via Gemini API endpoint
     if (typeof window !== "undefined" && typeof fetch === "function") {
       try {
         const response = await fetch("/api/voice", {
@@ -356,7 +397,7 @@ class ArcadeAudioEngine {
         if (response.ok) {
           const data = (await response.json()) as { audioBase64?: string; mimeType?: string };
           if (data.audioBase64 && this.speechIsActive(epoch)) {
-            const played = await this.playBase64Audio(data.audioBase64, data.mimeType || "audio/wav", epoch);
+            const played = await this.playBase64Audio(data.audioBase64, data.mimeType || "audio/wav", epoch, onStart);
             if (played || !this.speechIsActive(epoch)) return;
           }
         }
@@ -368,6 +409,7 @@ class ArcadeAudioEngine {
     if (!this.speechIsActive(epoch)) return;
 
     // Fallback to speech synthesis only if Gemini audio was unreachable
+    onStart?.();
     await this.speakFallback(turn.speaker, turn.text, epoch);
   }
 

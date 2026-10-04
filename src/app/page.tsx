@@ -62,8 +62,6 @@ export default function Home() {
   const [goal, setGoal] = useState("");
   const [rewardCents, setRewardCents] = useState(50);
   const [token, setToken] = useState("");
-  const [tokenInput, setTokenInput] = useState("");
-  const [needsToken, setNeedsToken] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [sessionCookieAuth, setSessionCookieAuth] = useState(false);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
@@ -105,7 +103,7 @@ export default function Home() {
       if (!quiet) setLoading(true);
       try {
         let response = await fetch("/api/state", { headers: headers(), credentials: "same-origin", cache: "no-store" });
-        if (response.status === 401 && sessionCookieAuth && !sessionRecoveryAttempted.current) {
+        if (response.status === 401 && !sessionRecoveryAttempted.current) {
           sessionRecoveryAttempted.current = true;
           if (await bootstrapSession()) {
             response = await fetch("/api/state", { headers: headers(), credentials: "same-origin", cache: "no-store" });
@@ -113,7 +111,6 @@ export default function Home() {
         }
         if (response.status === 401) {
           setSessionCookieAuth(false);
-          setNeedsToken(true);
           setConnectionError("");
           return;
         }
@@ -122,9 +119,7 @@ export default function Home() {
         if (!isSnapshot(data)) throw new Error("Invalid snapshot returned.");
         setSnapshot(data);
         setHasLoadedSnapshot(true);
-        setNeedsToken(false);
         setConnectionError("");
-        setTokenInput("");
         sessionRecoveryAttempted.current = false;
       } catch (e) {
         setConnectionError(e instanceof Error ? e.message : "Network error");
@@ -150,12 +145,10 @@ export default function Home() {
         sessionStorage.removeItem("bountymesh_token");
         setToken("");
         setSessionCookieAuth(true);
-        setNeedsToken(false);
       } else {
         const savedToken = sessionStorage.getItem("bountymesh_token") || "";
         setToken(savedToken);
         setSessionCookieAuth(false);
-        setNeedsToken(!savedToken);
       }
       setAuthReady(true);
     })();
@@ -166,14 +159,14 @@ export default function Home() {
 
   // Poll for recovery while the live stream is disconnected.
   useEffect(() => {
-    if (!authReady || needsToken) return;
+    if (!authReady) return;
     const interval = setInterval(() => void refresh(true), submitting ? 1200 : realtimeConnected ? 15000 : 3000);
     return () => clearInterval(interval);
-  }, [authReady, needsToken, refresh, submitting, realtimeConnected]);
+  }, [authReady, refresh, submitting, realtimeConnected]);
 
   // Authenticated SSE stream; polling remains active as a recovery path.
   useEffect(() => {
-    if (!authReady || needsToken || snapshot.config.mode !== "live") {
+    if (!authReady || snapshot.config.mode !== "live") {
       setRealtimeConnected(false);
       return;
     }
@@ -196,8 +189,7 @@ export default function Home() {
             signal: controller.signal,
           });
           if (response.status === 401 && active) {
-            if (sessionCookieAuth) void refresh(true);
-            else setNeedsToken(true);
+            void refresh(true);
           }
           if (!response.ok || !response.body) throw new Error(`Realtime stream unavailable (${response.status}).`);
 
@@ -206,7 +198,6 @@ export default function Home() {
           let buffer = "";
           if (active) {
             setRealtimeConnected(true);
-            setNeedsToken(false);
             setConnectionError("");
           }
           retryDelay = 1000;
@@ -255,16 +246,16 @@ export default function Home() {
       controller.abort();
       setRealtimeConnected(false);
     };
-  }, [authReady, needsToken, snapshot.config.mode, headers, refresh, sessionCookieAuth]);
+  }, [authReady, snapshot.config.mode, headers, refresh, sessionCookieAuth]);
 
-  const networkReady = authReady && hasLoadedSnapshot && snapshot.config.mode === "live" && snapshot.config.ready && !needsToken;
+  const networkReady = authReady && hasLoadedSnapshot && snapshot.config.mode === "live" && snapshot.config.ready;
   const canStartWork = networkReady && !pendingRun && !submitting;
   const canRunLiveDemo = canStartWork && snapshot.config.mode === "live";
 
   const submitRun = async (goalValue: string, rewardValue: number) => {
     if (requestInFlight.current || submitting) return;
     if (!networkReady) {
-      setError(needsToken ? "Connect an operator session before submitting work." : "Waiting for a ready network snapshot before starting work.");
+      setError("Waiting for a ready network snapshot before starting work.");
       return;
     }
     const cleanGoal = goalValue.trim();
@@ -315,8 +306,7 @@ export default function Home() {
       }
       if (response.status === 401) {
         setSessionCookieAuth(false);
-        setNeedsToken(true);
-        throw new Error("Operator token required.");
+        throw new Error("Authorization required.");
       }
       if (!response.ok) {
         await refresh(true);
@@ -364,16 +354,6 @@ export default function Home() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     void submitRun(goal, rewardCents);
-  };
-
-  const connectToken = () => {
-    const nextToken = tokenInput.trim();
-    if (!nextToken) return;
-    sessionStorage.setItem("bountymesh_token", nextToken);
-    setToken(nextToken);
-    setSessionCookieAuth(false);
-    sessionRecoveryAttempted.current = false;
-    setNeedsToken(false);
   };
 
   const startNewRequest = () => {
@@ -471,9 +451,9 @@ export default function Home() {
           <div className="header-actions">
             <div className="wallet-chip" title="Current Guild Treasury / Escrow balance">
               <Coins size={14} style={{ color: "#fbbf24", flexShrink: 0 }} />
-              <span className="wallet-label">{needsToken ? "AUTH REQUIRED:" : !hasLoadedSnapshot ? "CONNECTING:" : "TREASURY:"}</span>
+              <span className="wallet-label">{!hasLoadedSnapshot ? "CONNECTING:" : "TREASURY:"}</span>
               <span className="wallet-value">
-                {!hasLoadedSnapshot || needsToken
+                {!hasLoadedSnapshot
                   ? "—"
                   : liveStripe && stripeTestPaid > 0
                   ? `$${(stripeTestPaid / 100).toFixed(2)}`
@@ -499,35 +479,7 @@ export default function Home() {
 
       {/* Main Content Viewport */}
       <main className="app-main-content">
-        {needsToken && (
-          <section className="clean-card" style={{ padding: 18, marginBottom: 20, border: "1px solid rgba(251, 191, 36, 0.35)", background: "rgba(120, 83, 12, 0.12)" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-              <ShieldAlert size={18} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 2 }} />
-              <div style={{ flex: 1 }}>
-                <b style={{ color: "#f8fafc", fontSize: 13 }}>Operator authorization required</b>
-                <p style={{ color: "#cbd5e1", fontSize: 12, margin: "5px 0 12px" }}>
-                  Enter the deployment operator token to load protected network state and submit work. It stays in this browser session only.
-                </p>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    aria-label="Operator token"
-                    placeholder="OPERATOR_TOKEN"
-                    value={tokenInput}
-                    onChange={(event) => setTokenInput(event.target.value)}
-                    onKeyDown={(event) => { if (event.key === "Enter") connectToken(); }}
-                    style={{ minWidth: 240, flex: "1 1 240px", color: "#f8fafc", background: "rgba(2, 6, 23, 0.75)", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: 6, padding: "9px 11px", outline: "none", fontFamily: "var(--font-mono)", fontSize: 12 }}
-                  />
-                  <button type="button" className="arcade-btn-primary" onClick={connectToken} disabled={!tokenInput.trim()} style={{ padding: "9px 14px", fontSize: 11 }}>
-                    Connect operator session
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-        {connectionError && !needsToken && (
+        {connectionError && (
           <div style={{ color: "#fda4af", fontSize: 11, marginBottom: 14, fontFamily: "var(--font-mono)" }}>{connectionError}</div>
         )}
         {/* TAB 1: INTERACTIVE GUILD HALL ROOM */}

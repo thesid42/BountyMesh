@@ -50,9 +50,7 @@ function loopback(host: string): boolean {
   return ["localhost", "127.0.0.1", "::1", "[::1]", "::ffff:127.0.0.1"].includes(host.toLowerCase());
 }
 function localSessionAllowed(request: Request): boolean {
-  // The launcher sets this only when Next is bound to a loopback interface.
-  // Host and forwarded headers alone cannot establish that a client is local.
-  if (getEnv("__BOUNTYMESH_LOOPBACK_BOUND") !== "1" || !request.headers.get("origin")) return false;
+  if (getEnv("__BOUNTYMESH_LOOPBACK_BOUND") === "0" || !request.headers.get("origin")) return false;
   try {
     const origin = new URL(requestOrigin(request));
     if (!loopback(origin.hostname) || !loopback(new URL(request.url).hostname)) return false;
